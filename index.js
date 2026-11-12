@@ -14,6 +14,7 @@ const {
 const { buildRulesAndRolePanel, handleRoleButtonInteraction } = require('./role');
 const { SOCIAL_LINKS_BLOCK, runFullServerSetup } = require('./setup');
 const { applyRoleLock, lockNewChannel } = require('./role-lock');
+const { setupCommunity, handleCommunityInteraction, isOwner, sendError } = require('./community');
 
 // =========================================================================
 // 1. SERVER HTTP MINI (HEALTH-CHECK RENDER 24 JAM)
@@ -71,6 +72,11 @@ client.once('clientReady', async () => {
         .setName('setup-server')
         .setDescription('Reset & bangun ulang seluruh kategori, channel, role, dan AutoMod server')
         .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+        .toJSON(),
+      new SlashCommandBuilder()
+        .setName('setup-komunitas')
+        .setDescription('Siapkan panel privat Owner dan formulir feedback tanpa reset server')
+        .setDMPermission(false)
         .toJSON(),
       new SlashCommandBuilder()
         .setName('kunci-chat')
@@ -233,6 +239,17 @@ client.on('guildMemberAdd', async (member) => {
 // 5. EVENT INTERAKSI (DELEGASI KE role.js & setup.js DENGAN VALIDASI IZIN)
 // =========================================================================
 client.on('interactionCreate', async (interaction) => {
+  // Interaksi panel kategori dan form harus ditangani sebelum tombol role.
+  if (interaction.customId?.startsWith('community:')) {
+    try {
+      await handleCommunityInteraction(interaction, client, GUILD_ID);
+    } catch (error) {
+      console.error('[COMMUNITY ERROR]', error);
+      await sendError(interaction, `❌ Proses gagal: ${error.message}`).catch(() => {});
+    }
+    return;
+  }
+
   // 1. Tangani tombol pemilihan role di role.js
   if (interaction.isButton()) {
     await handleRoleButtonInteraction(interaction);
@@ -241,6 +258,23 @@ client.on('interactionCreate', async (interaction) => {
 
   // 2. Tangani Slash Command
   if (!interaction.isChatInputCommand()) return;
+
+  // Panel ini hanya bisa dipasang anggota role Owner, termasuk jika bukan Administrator.
+  if (interaction.commandName === 'setup-komunitas') {
+    if (!interaction.guild || interaction.guildId !== GUILD_ID || !isOwner(interaction)) {
+      await interaction.reply({ content: '⛔ Hanya role Owner pada server yang dikonfigurasi dapat menjalankan perintah ini.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const result = await setupCommunity(interaction.guild, client);
+      await interaction.editReply({ content: `✅ Siap: ${result.manage}, ${result.manageChannels}, dan ${result.inbox} privat; formulir tersedia di ${result.feedback}.`, allowedMentions: { parse: [] } });
+    } catch (error) {
+      console.error('[SETUP KOMUNITAS ERROR]', error);
+      await interaction.editReply({ content: `❌ Setup belum selesai: ${error.message}. Periksa izin bot lalu jalankan ulang /setup-komunitas.` });
+    }
+    return;
+  }
 
   // Validasi keamanan sisi server: pastikan eksekutor benar-benar memiliki izin Administrator
   if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
@@ -272,7 +306,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.followUp({
         content: lockResult.errors.length
           ? `⚠️ Setup selesai, tetapi penguncian gagal pada ${lockResult.errors.length} kanal: ${lockResult.errors.join('; ').slice(0, 1200)}`
-          : '✅ Setup selesai dan izin wajib pilih role telah diterapkan.',
+          : '✅ Setup selesai dan izin wajib pilih role telah diterapkan. Jalankan /setup-komunitas untuk memasang panel dan formulir.',
         flags: MessageFlags.Ephemeral,
       }).catch(() => {});
     } catch (err) {

@@ -169,14 +169,14 @@ const serverStructure = [
       {
         name: 'feedback-and-request',
         type: ChannelType.GuildText,
-        readOnly: false, // Terbuka khusus bagi member yang sudah memilih role status
+        readOnly: true, // Kanal khusus form, bukan tempat chat
         topic: 'Panduan bagi member untuk memberikan masukan ide fitur, topik pembahasan, usulan template baru, serta tautan media sosial.',
         embed: new EmbedBuilder()
           .setColor(0x1E293B)
           .setAuthor({ name: 'AINUN IJLAL STUDIO • FEEDBACK & REQUESTS' })
           .setTitle('Masukan Fitur & Permintaan Konten / Template')
           .setDescription(
-            'Sampaikan usulan topik pembahasan, ide fitur komunitas, maupun permintaan starter template baru untuk pengembangan **Ainun Ijlal Studio**.\n\n' +
+            'Gunakan tombol formulir di kanal ini untuk menyampaikan usulan dan permintaan.\n\n' +
             '**Media Sosial & Kontak:**\n' +
             SOCIAL_LINKS_BLOCK
           )
@@ -357,7 +357,7 @@ async function runFullServerSetup(guild, client) {
             ],
           });
         } else {
-          // Channel Terbuka (#diskusi, #feedback-and-request):
+          // Channel Terbuka (#diskusi):
           // @everyone dikunci agar TIDAK bisa kirim pesan sebelum pilih role
           channelOverwrites.push({
             id: everyoneRole.id,

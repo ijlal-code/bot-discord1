@@ -6,8 +6,9 @@ const MESSAGE_CHANNEL_TYPES = new Set([
   ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildVoice,
   ChannelType.GuildStageVoice, ChannelType.GuildForum, ChannelType.GuildMedia,
 ]);
-const CHAT_CHANNELS = new Set(['diskusi', 'feedback-and-request']);
-const BOT_CHANNELS = new Set(['rules-and-role', 'announcements', ...CHAT_CHANNELS]);
+// Feedback kini khusus form; hanya diskusi yang diberi akses chat.
+const CHAT_CHANNELS = new Set(['diskusi']);
+const BOT_CHANNELS = new Set(['rules-and-role', 'announcements', 'feedback-and-request', ...CHAT_CHANNELS]);
 const LOCKED = {
   SendMessages: false,
   SendMessagesInThreads: false,
@@ -47,7 +48,7 @@ async function getLockContext(guild) {
 async function lockChannel(channel, guild, client, statusRoles) {
   if (!channel || !MESSAGE_CHANNEL_TYPES.has(channel.type)) return false;
   // Hindari memberikan akses tambahan ke kanal privat atau read-only selain dua kanal diskusi.
-  // Dua kanal diskusi harus memiliki kebijakan akses sebagaimana setup.js.
+  // Kanal diskusi memiliki kebijakan akses sebagaimana setup.js.
   if (CHAT_CHANNELS.has(channel.name) && channel.type === ChannelType.GuildText) {
     for (const role of statusRoles) await setOverwrite(channel, role.id, CHAT_ACCESS);
   }
