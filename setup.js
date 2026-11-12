@@ -7,14 +7,14 @@ const {
   AutoModerationActionType,
 } = require('discord.js');
 const { STATUS_ROLES, buildRulesAndRolePanel } = require('./role');
-​
+
 const SOCIAL_LINKS_BLOCK =
   '• **YouTube:** https://www.youtube.com/@ainunijlal\n' +
   '• **TikTok:** https://www.tiktok.com/@ainunijlal\n' +
   '• **Instagram:** https://www.instagram.com/ainunijlal_ai/\n' +
   '• **LinkedIn:** https://www.linkedin.com/in/ainunijlal\n' +
   '• **Email:** ijlalainun@gmail.com';
-​
+
 const rolesToCreate = [
   { name: 'Owner', color: 0xE74C3C, hoist: true, permissions: [] },
   {
@@ -35,7 +35,7 @@ const rolesToCreate = [
   { name: 'Pelajar', color: 0xF1C40F, hoist: true, permissions: [] },
   { name: 'Umum', color: 0x34495E, hoist: true, permissions: [] },
 ];
-​
+
 const serverStructure = [
   {
     category: '📢 WELCOME & INFO',
@@ -209,14 +209,14 @@ const serverStructure = [
     ],
   },
 ];
-​
+
 async function runFullServerSetup(guild, client) {
   console.log(`Memulai RESET & SETUP server: "${guild.name}"...`);
-​
+
   // --- TAHAP 1: RESET & BUAT ULANG ROLE ---
   const existingRoles = await guild.roles.fetch();
   const createdRolesMap = {};
-​
+
   // Hapus juga role lama yang sudah tidak dipakai (Frontend/Backend/UI-UX)
   const obsoleteRoleNames = ['Frontend Developer', 'Backend Developer', 'UI/UX Designer'];
   for (const obsName of obsoleteRoleNames) {
@@ -225,7 +225,7 @@ async function runFullServerSetup(guild, client) {
       await obsRole.delete('Hapus role lama yang tidak digunakan').catch(() => {});
     }
   }
-​
+
   for (const r of rolesToCreate) {
     const oldRoles = existingRoles.filter((role) => role.name === r.name);
     for (const [, oldRole] of oldRoles) {
@@ -235,7 +235,7 @@ async function runFullServerSetup(guild, client) {
         console.log(`[!] Lewati hapus role ${r.name}: ${err.message}`);
       }
     }
-​
+
     try {
       const newRole = await guild.roles.create({
         name: r.name,
@@ -251,17 +251,17 @@ async function runFullServerSetup(guild, client) {
       if (fallbackRole) createdRolesMap[r.name] = fallbackRole;
     }
   }
-​
+
   const everyoneRole = guild.roles.everyone;
   const ownerRole = createdRolesMap['Owner'];
   const adminRole = createdRolesMap['Admin'];
-​
+
   // --- TAHAP 2: BERSIHKAN & BUAT ULANG KATEGORI / CHANNEL ---
   const existingChannels = await guild.channels.fetch();
   const managedCategoryNames = serverStructure.map((g) => g.category);
   const managedChannelNames = serverStructure.flatMap((g) => g.channels.map((c) => c.name));
   const defaultOldNames = ['general', 'General', 'Text Channels', 'Voice Channels'];
-​
+
   for (const [, ch] of existingChannels) {
     if (!ch || ch.type === ChannelType.GuildCategory) continue;
     if (managedChannelNames.includes(ch.name) || defaultOldNames.includes(ch.name)) {
@@ -272,7 +272,7 @@ async function runFullServerSetup(guild, client) {
       }
     }
   }
-​
+
   const remainingCategories = await guild.channels.fetch();
   for (const [, cat] of remainingCategories) {
     if (!cat || cat.type !== ChannelType.GuildCategory) continue;
@@ -284,13 +284,13 @@ async function runFullServerSetup(guild, client) {
       }
     }
   }
-​
+
   const logChannelsMap = {};
   let diskusiChannelObj = null;
-​
+
   for (const group of serverStructure) {
     const categoryOverwrites = [];
-​
+
     if (group.isPrivateOwnerOnly) {
       categoryOverwrites.push({
         id: everyoneRole.id,
@@ -321,7 +321,7 @@ async function runFullServerSetup(guild, client) {
         ],
       });
     }
-​
+
     let category;
     try {
       category = await guild.channels.create({
@@ -333,10 +333,10 @@ async function runFullServerSetup(guild, client) {
       console.error(`Gagal membuat kategori ${group.category}:`, err.message);
       continue;
     }
-​
+
     for (const ch of group.channels) {
       const channelOverwrites = [];
-​
+
       if (group.isPrivateOwnerOnly) {
         channelOverwrites.push(...categoryOverwrites);
       } else if (ch.type === ChannelType.GuildText) {
@@ -373,7 +373,7 @@ async function runFullServerSetup(guild, client) {
               PermissionsBitField.Flags.CreatePrivateThreads,
             ],
           });
-​
+
           // Buka izin kirim pesan HANYA untuk role Pekerja, Pelajar, dan Umum
           for (const statusRoleName of STATUS_ROLES) {
             const roleObj = createdRolesMap[statusRoleName];
@@ -394,7 +394,7 @@ async function runFullServerSetup(guild, client) {
           }
         }
       }
-​
+
       try {
         const channelObj = await guild.channels.create({
           name: ch.name,
@@ -403,11 +403,11 @@ async function runFullServerSetup(guild, client) {
           topic: ch.topic || undefined,
           permissionOverwrites: channelOverwrites.length > 0 ? channelOverwrites : undefined,
         });
-​
+
         if (ch.name === 'diskusi') {
           diskusiChannelObj = channelObj;
         }
-​
+
         if (ch.type === ChannelType.GuildText) {
           if (ch.useInteractiveRolePanel) {
             await channelObj.send(buildRulesAndRolePanel(guild));
@@ -415,7 +415,7 @@ async function runFullServerSetup(guild, client) {
             await channelObj.send({ embeds: [ch.embed] });
           }
         }
-​
+
         if (group.isPrivateOwnerOnly) {
           logChannelsMap[ch.name] = channelObj;
         }
@@ -424,7 +424,7 @@ async function runFullServerSetup(guild, client) {
       }
     }
   }
-​
+
   // --- TAHAP 3: INTEGRASI DISCORD AUTOMOD KE LOG PRIVAT ---
   try {
     const existingRules = await guild.autoModerationRules.fetch();
@@ -434,11 +434,11 @@ async function runFullServerSetup(guild, client) {
   } catch (err) {
     console.log(`[!] Lewati hapus aturan AutoMod lama: ${err.message}`);
   }
-​
+
   const logSpamChannel = logChannelsMap['log-spam'];
   const logPhishingChannel = logChannelsMap['log-phishing'];
   const logKataKasarChannel = logChannelsMap['log-kata-kasar'];
-​
+
   try {
     const actionsSpam = [{ type: AutoModerationActionType.BlockMessage }];
     if (logSpamChannel) {
@@ -457,7 +457,7 @@ async function runFullServerSetup(guild, client) {
   } catch (err) {
     console.log(`[AutoMod] Anti-Spam dilewati: ${err.message}`);
   }
-​
+
   try {
     const actionsPhishing = [{ type: AutoModerationActionType.BlockMessage }];
     if (logPhishingChannel) {
@@ -482,7 +482,7 @@ async function runFullServerSetup(guild, client) {
   } catch (err) {
     console.log(`[AutoMod] Anti-Phishing dilewati: ${err.message}`);
   }
-​
+
   try {
     const actionsKataKasar = [{ type: AutoModerationActionType.BlockMessage }];
     if (logKataKasarChannel) {
@@ -514,7 +514,7 @@ async function runFullServerSetup(guild, client) {
   } catch (err) {
     console.log(`[AutoMod] Filter Kata Kasar dilewati: ${err.message}`);
   }
-​
+
   // --- TAHAP 4: SYSTEM WELCOME MESSAGES BAWAAN KE #diskusi ---
   if (diskusiChannelObj) {
     try {
@@ -526,10 +526,10 @@ async function runFullServerSetup(guild, client) {
       console.log(`[System Channel] Dilewati: ${err.message}`);
     }
   }
-​
+
   console.log('✅ Struktur server selesai dibangun.');
 }
-​
+
 module.exports = {
   SOCIAL_LINKS_BLOCK,
   runFullServerSetup,

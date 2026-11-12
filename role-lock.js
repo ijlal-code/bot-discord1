@@ -1,6 +1,6 @@
 const { ChannelType, PermissionsBitField } = require('discord.js');
 const { STATUS_ROLES } = require('./role');
-​
+
 // Thread mengikuti izin channel induk; kategori tidak diubah agar akses lihat tetap aman.
 const MESSAGE_CHANNEL_TYPES = new Set([
   ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildVoice,
@@ -16,7 +16,7 @@ const LOCKED = {
 };
 const CHAT_ACCESS = { SendMessages: true, SendMessagesInThreads: true };
 const BOT_ACCESS = { SendMessages: true, SendMessagesInThreads: true };
-​
+
 function alreadySet(channel, id, updates) {
   const overwrite = channel.permissionOverwrites.cache.get(id);
   return overwrite && Object.entries(updates).every(([name, allow]) => {
@@ -24,14 +24,14 @@ function alreadySet(channel, id, updates) {
     return allow ? overwrite.allow.has(flag) : overwrite.deny.has(flag);
   });
 }
-​
+
 async function setOverwrite(channel, id, values) {
   if (!alreadySet(channel, id, values)) {
     // edit mempertahankan izin lain pada overwrite yang sama.
     await channel.permissionOverwrites.edit(id, values, { reason: 'Wajib pilih role sebelum mengirim pesan' });
   }
 }
-​
+
 async function getLockContext(guild) {
   const [channels, roles] = await Promise.all([guild.channels.fetch(), guild.roles.fetch()]);
   const rules = channels.find(c => c && c.name === 'rules-and-role' && c.type === ChannelType.GuildText);
@@ -43,7 +43,7 @@ async function getLockContext(guild) {
   });
   return { channels, statusRoles };
 }
-​
+
 async function lockChannel(channel, guild, client, statusRoles) {
   if (!channel || !MESSAGE_CHANNEL_TYPES.has(channel.type)) return false;
   // Hindari memberikan akses tambahan ke kanal privat atau read-only selain dua kanal diskusi.
@@ -58,7 +58,7 @@ async function lockChannel(channel, guild, client, statusRoles) {
   await setOverwrite(channel, guild.roles.everyone.id, LOCKED);
   return true;
 }
-​
+
 async function applyRoleLock(guild, client) {
   const { channels, statusRoles } = await getLockContext(guild);
   const errors = [];
@@ -73,12 +73,11 @@ async function applyRoleLock(guild, client) {
   }
   return { checked, errors };
 }
-​
+
 async function lockNewChannel(channel, client) {
   if (!MESSAGE_CHANNEL_TYPES.has(channel.type)) return;
   const { statusRoles } = await getLockContext(channel.guild);
   await lockChannel(channel, channel.guild, client, statusRoles);
 }
-​
+
 module.exports = { applyRoleLock, lockNewChannel };
-​

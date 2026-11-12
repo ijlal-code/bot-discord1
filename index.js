@@ -10,16 +10,16 @@ const {
   Routes,
   SlashCommandBuilder,
 } = require('discord.js');
-​
+
 const { buildRulesAndRolePanel, handleRoleButtonInteraction } = require('./role');
 const { SOCIAL_LINKS_BLOCK, runFullServerSetup } = require('./setup');
 const { applyRoleLock, lockNewChannel } = require('./role-lock');
-​
+
 // =========================================================================
 // 1. SERVER HTTP MINI (HEALTH-CHECK RENDER 24 JAM)
 // =========================================================================
 const PORT = process.env.PORT || 3000;
-​
+
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(
@@ -30,40 +30,40 @@ const server = http.createServer((req, res) => {
     })
   );
 });
-​
+
 server.listen(PORT, () => {
   console.log(`[HTTP] Server health-check aktif pada port ${PORT}`);
 });
-​
+
 // =========================================================================
 // 2. KONFIGURASI ENVIRONMENT & CLIENT
 // =========================================================================
 const TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID || '1569980330629275819';
 const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID;
-​
+
 if (!TOKEN) {
   console.error('[ERROR] Variabel DISCORD_TOKEN belum diatur pada Environment Render.');
   process.exit(1);
 }
-​
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers, // Wajib aktif di Discord Developer Portal
   ],
 });
-​
+
 // Pengaman agar proses setup tidak pernah berjalan dua kali secara bersamaan
 let isSetupRunning = false;
-​
+
 // =========================================================================
 // 3. EVENT SAAT BOT AKTIF (clientReady) DENGAN VALIDASI API LANGSUNG
 // =========================================================================
 client.once('clientReady', async () => {
   console.log(`[DISCORD] Bot aktif sebagai ${client.user.tag}`);
   client.user.setActivity('Ainun Ijlal Studio', { type: ActivityType.Watching });
-​
+
   // Registrasi Slash Commands (/setup-server & /panel-role) khusus Administrator
   try {
     const commands = [
@@ -83,14 +83,14 @@ client.once('clientReady', async () => {
         .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
         .toJSON(),
     ];
-​
+
     const rest = new REST({ version: '10' }).setToken(TOKEN);
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log('[SLASH] Perintah /setup-server dan /panel-role berhasil terdaftar.');
   } catch (err) {
     console.error('[SLASH ERROR]', err.message);
   }
-​
+
   // Ambil data server langsung dari API Discord (bukan cache lokal)
   let targetGuild = null;
   try {
@@ -99,24 +99,24 @@ client.once('clientReady', async () => {
   } catch (err) {
     console.error('[GUILD FETCH ERROR]', err.message);
   }
-​
+
   if (!targetGuild) {
     console.warn('[INIT] Server target tidak ditemukan. Melewati pengecekan otomatis demi keamanan data.');
     return;
   }
-​
+
   try {
     // Wajib fetch() langsung ke API Discord agar daftar channel akurat 100%
     const channels = await targetGuild.channels.fetch();
-​
+
     // Pengaman ekstra: jika hasil fetch kosong/gagal, JANGAN jalankan reset otomatis
     if (!channels || channels.size === 0) {
       console.warn('[SAFEGUARD] Daftar channel kosong dari API, membatalkan pengecekan setup otomatis.');
       return;
     }
-​
+
     const hasRulesChannel = channels.some((ch) => ch && ch.name === 'rules-and-role');
-​
+
     if (!hasRulesChannel) {
       // Jangan pernah menghapus channel/role secara otomatis saat startup.
       console.warn('[INIT] #rules-and-role belum ada. Buat panel dan role dahulu; setup ulang hanya melalui /setup-server.');
@@ -128,18 +128,18 @@ client.once('clientReady', async () => {
       } catch (error) {
         console.error('[ROLE LOCK] Penguncian dibatalkan:', error.message);
       }
-​
+
       // Sinkronisasi panel tombol interaktif 1 baris (Pekerja, Pelajar, Umum) di #rules-and-role
       const rulesCh = channels.find(
         (ch) => ch && ch.name === 'rules-and-role' && ch.isTextBased()
       );
-​
+
       if (rulesCh) {
         const msgs = await rulesCh.messages.fetch({ limit: 10 }).catch(() => null);
         const hasUpdatedPanel = msgs?.some(
           (m) => m.author.id === client.user.id && m.components.length === 1
         );
-​
+
         if (!hasUpdatedPanel) {
           const oldBotMsgs = msgs?.filter((m) => m.author.id === client.user.id);
           if (oldBotMsgs) {
@@ -159,7 +159,7 @@ client.once('clientReady', async () => {
     console.error('[SAFEGUARD ERROR] Gagal memverifikasi channel saat startup (reset dibatalkan):', err.message);
   }
 });
-​
+
 // =========================================================================
 // 4. EVENT SAMBUTAN MEMBER BARU (TANPA AUTO ROLE)
 // =========================================================================
@@ -167,25 +167,25 @@ client.on('guildMemberAdd', async (member) => {
   try {
     // Member baru tidak diberi role otomatis. @everyone adalah role bawaan Discord.
     if (member.guild.id !== GUILD_ID || member.user.bot) return;
-​
+
     // 2. Cari kanal welcome (WELCOME_CHANNEL_ID -> #announcements -> systemChannel)
     const channels = await member.guild.channels.fetch().catch(() => member.guild.channels.cache);
     const welcomeChannel =
       (WELCOME_CHANNEL_ID && channels.get(WELCOME_CHANNEL_ID)) ||
       channels.find((ch) => ch && ch.name === 'announcements' && ch.isTextBased()) ||
       member.guild.systemChannel;
-​
+
     const rulesCh = channels.find((ch) => ch && ch.name === 'rules-and-role');
     const diskusiCh = channels.find((ch) => ch && ch.name === 'diskusi');
     const templateCh = channels.find((ch) => ch && ch.name === 'template-gratis');
-​
+
     // Discord tidak mengirim event percobaan pesan yang ditolak oleh izin channel.
     // Karena itu, peringatan dikirim saat bergabung (DM bisa dinonaktifkan pengguna).
     await member.send(
       `Selamat datang di **${member.guild.name}**! Harap pilih role Pekerja, Pelajar, atau Umum di ${rulesCh ? `${rulesCh}` : '#rules-and-role'} terlebih dahulu agar dapat mengirim pesan.`
     ).catch((err) => console.warn(`[WELCOME DM] Gagal mengirim DM kepada ${member.id}: ${err.message}`));
     if (!welcomeChannel || !welcomeChannel.isTextBased() || !welcomeChannel.send) return;
-​
+
     const welcomeEmbed = new EmbedBuilder()
       .setColor(0x0F172A)
       .setAuthor({
@@ -219,7 +219,7 @@ client.on('guildMemberAdd', async (member) => {
         iconURL: member.guild.iconURL({ dynamic: true }) || undefined,
       })
       .setTimestamp();
-​
+
     await welcomeChannel.send({
       content: `Selamat datang di komunitas, ${member}.`,
       embeds: [welcomeEmbed],
@@ -228,7 +228,7 @@ client.on('guildMemberAdd', async (member) => {
     console.error('[WELCOME ERROR]', error);
   }
 });
-​
+
 // =========================================================================
 // 5. EVENT INTERAKSI (DELEGASI KE role.js & setup.js DENGAN VALIDASI IZIN)
 // =========================================================================
@@ -238,10 +238,10 @@ client.on('interactionCreate', async (interaction) => {
     await handleRoleButtonInteraction(interaction);
     return;
   }
-​
+
   // 2. Tangani Slash Command
   if (!interaction.isChatInputCommand()) return;
-​
+
   // Validasi keamanan sisi server: pastikan eksekutor benar-benar memiliki izin Administrator
   if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
     await interaction.reply({
@@ -250,7 +250,7 @@ client.on('interactionCreate', async (interaction) => {
     });
     return;
   }
-​
+
   if (interaction.commandName === 'setup-server') {
     if (isSetupRunning) {
       await interaction.reply({
@@ -259,13 +259,13 @@ client.on('interactionCreate', async (interaction) => {
       });
       return;
     }
-​
+
     isSetupRunning = true;
     await interaction.reply({
       content: '⏳ Sedang menjalankan reset & pembuatan ulang seluruh role, kategori, channel, dan AutoMod. Mohon tunggu sekitar 15–30 detik...',
       flags: MessageFlags.Ephemeral,
     });
-​
+
     try {
       await runFullServerSetup(interaction.guild, client);
       const lockResult = await applyRoleLock(interaction.guild, client);
@@ -286,7 +286,7 @@ client.on('interactionCreate', async (interaction) => {
     }
     return;
   }
-​
+
   if (interaction.commandName === 'kunci-chat') {
     if (interaction.guildId !== GUILD_ID) {
       await interaction.reply({ content: 'Perintah ini hanya tersedia pada server GUILD_ID yang dikonfigurasi.', flags: MessageFlags.Ephemeral });
@@ -303,7 +303,7 @@ client.on('interactionCreate', async (interaction) => {
     }
     return;
   }
-​
+
   if (interaction.commandName === 'panel-role') {
     await interaction.reply({
       content: '✅ Panel registrasi role telah dikirim ke kanal ini.',
@@ -312,7 +312,7 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.channel.send(buildRulesAndRolePanel(interaction.guild));
   }
 });
-​
+
 // Kanal baru juga dikunci; thread mengikuti permission channel induknya.
 client.on('channelCreate', async (channel) => {
   if (!channel.guild || channel.guild.id !== GUILD_ID || isSetupRunning) return;
@@ -322,12 +322,12 @@ client.on('channelCreate', async (channel) => {
     console.error(`[ROLE LOCK] Kanal baru ${channel.name}: ${error.message}`);
   }
 });
-​
+
 // =========================================================================
 // 6. PENANGANAN ERROR GLOBAL
 // =========================================================================
 process.on('unhandledRejection', (error) => {
   console.error('[UNHANDLED REJECTION]', error);
 });
-​
+
 client.login(TOKEN);
