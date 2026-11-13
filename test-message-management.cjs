@@ -1,12 +1,12 @@
 const assert=require('node:assert/strict');
-const {Collection,ChannelType,EmbedBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle}=require('discord.js');
+const {Collection,ChannelType,EmbedBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,PermissionsBitField}=require('discord.js');
 const {handle,panel}=require('./message-management');
 const client={user:{id:'100000000000000004'}};
 const category={name:'⚡ AINUN IJLAL STUDIO'};
 const comp=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('select_role:status:Umum').setLabel('Umum').setStyle(ButtonStyle.Secondary));
 const message={id:'100000000000000010',content:'Teks asli',author:client.user,embeds:[new EmbedBuilder().setAuthor({name:'Asli'}).setTitle('Aturan').setDescription('Isi lama').addFields({name:'Pilihan',value:'Role',inline:false}).setFooter({text:'Lama'})],components:[comp],async edit(p){this.payload=p;this.content=p.content;this.embeds=p.embeds;return this}};
 const messages=new Collection([[message.id,message]]);
-const ch={id:'100000000000000011',name:'rules-and-role',type:ChannelType.GuildText,parent:category,messages:{async fetch(o){if(o.message)return messages.get(o.message);return messages}}};
+const ch={id:'100000000000000011',name:'rules-and-role',type:ChannelType.GuildText,parent:category,permissionsFor:()=>new PermissionsBitField([PermissionsBitField.Flags.ViewChannel,PermissionsBitField.Flags.ReadMessageHistory]),messages:{async fetch(o){if(o.message)return messages.get(o.message);return messages}}};
 const guild={id:'100000000000000012',channels:{fetch:async(id)=>id===ch.id?ch:null}};
 function i(customId,type,extra={}){return {customId,guild,guildId:guild.id,user:{id:'100000000000000013'},values:[],isButton:()=>type==='button',isChannelSelectMenu:()=>type==='channel',isStringSelectMenu:()=>type==='string',isModalSubmit:()=>type==='modal',async reply(p){this.output=p},async update(p){this.output=p},async showModal(m){this.modal=m.toJSON()},async deferReply(){},async editReply(x){this.output=x},...extra}}
 (async()=>{
@@ -21,6 +21,7 @@ function i(customId,type,extra={}){return {customId,guild,guildId:guild.id,user:
  x=i(sid2,'string',{values:[message.id]});await handle(x,client);const mid2=x.modal.custom_id;message.content='Diubah orang lain';
  x=i(mid2,'modal',{fields:{getTextInputValue:k=>values[k]}});await assert.rejects(handle(x,client),/telah berubah/);assert.equal(message.content,'Diubah orang lain');
  const outside={...ch,id:'100000000000000014',name:'secret',parent:{name:'other'}};guild.channels.fetch=async()=>outside;
- x=i('community:initial-channel','channel',{values:[outside.id]});await assert.rejects(handle(x,client),/di luar/);
+ x=i('community:initial-channel','channel',{values:[outside.id]});await handle(x,client);assert.equal(x.output.components.length,2);
+ outside.permissionsFor=()=>new PermissionsBitField();x=i('community:initial-channel','channel',{values:[outside.id]});await assert.rejects(handle(x,client),/di luar/);
  console.log('LULUS: editor pesan, simpan in-place, tombol tetap, channel valid, deteksi perubahan.');
 })().catch(e=>{console.error(e);process.exitCode=1});

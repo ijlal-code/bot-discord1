@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder,
   ChannelType, EmbedBuilder, MessageFlags, ModalBuilder, PermissionsBitField,
-  TextInputBuilder, TextInputStyle,
+  TextInputBuilder, TextInputStyle, escapeMarkdown,
 } = require('discord.js');
 const selection = require('./selection-continue');
 const backup = require('./backup');
@@ -158,6 +158,23 @@ async function findInbox(guild, client) {
   if (found.size !== 1 || !safePrivateChannel(found.first(), guild, client, owner)) throw new Error('Kanal penerima belum aman atau tidak ditemukan. Hubungi Owner.');
   return found.first();
 }
+const feedbackUsers = new Map();
+const feedbackGuilds = new Map();
+function cleanFeedback(value) {
+  // Hanya data: tidak pernah dievaluasi, dijalankan, di-fetch atau diteruskan sebagai perintah.
+  return escapeMarkdown(value.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+    .replace(/@/g, '@\u200b').replace(/https?:\/\//gi, x => x.toLowerCase().startsWith('https') ? 'hxxps[:]//' : 'hxxp[:]//')
+    .replace(/www\./gi, 'www[.]'));
+}
+function allowFeedback(i) {
+  const now=Date.now(), key=`${i.guildId}:${i.user.id}`;
+  for (const [k,v] of feedbackUsers) if (now-v>60000) feedbackUsers.delete(k);
+  for (const [k,v] of feedbackGuilds) if (now-v.start>60000) feedbackGuilds.delete(k);
+  if (now-(feedbackUsers.get(key)||0)<30000) return false;
+  const window=feedbackGuilds.get(i.guildId)||{start:now,count:0};
+  if(window.count>=30)return false;
+  window.count++;feedbackGuilds.set(i.guildId,window);feedbackUsers.set(key,now);return true;
+}
 function isFeedbackChannel(interaction) {
   return interaction.channel?.type === ChannelType.GuildText && interaction.channel.name === FEEDBACK;
 }
@@ -187,10 +204,13 @@ async function handleCommunityInteraction(i, client, guildId) {
       await i.deferReply({ flags: MessageFlags.Ephemeral });
       const title = i.fields.getTextInputValue('judul').trim();
       const text = i.fields.getTextInputValue('isi').trim();
-      if (!title || !text) { await i.editReply('Judul dan isi wajib diisi.'); return true; }
+      if (!title || !text || title.length > 100 || text.length > 2000) { await i.editReply('Judul atau isi kosong/terlalu panjang.'); return true; }
+      const safeTitle=cleanFeedback(title), safeText=cleanFeedback(text);
+      if (!safeTitle.trim() || !safeText.trim() || safeTitle.length > 256 || safeText.length > 4096) { await i.editReply('Judul atau isi tidak valid setelah dibersihkan.'); return true; }
+      if (!allowFeedback(i)) { await i.editReply('Terlalu banyak pengiriman. Tunggu sebentar lalu coba lagi.'); return true; }
       const inbox = await findInbox(i.guild, client);
-      const embed = new EmbedBuilder().setColor(0x1e293b).setTitle(title).setDescription(text)
-        .addFields({ name: 'Pengirim', value: `${i.user.tag} (ID: ${i.user.id})` }).setTimestamp();
+      const embed = new EmbedBuilder().setColor(0x1e293b).setTitle(safeTitle).setDescription(safeText)
+        .addFields({ name: 'Pengirim', value: `${cleanFeedback(i.user.tag || i.user.username || 'Member')} (ID: ${i.user.id})`.slice(0, 1024) }).setTimestamp();
       await inbox.send({ embeds: [embed], allowedMentions: { parse: [] } });
       await i.editReply('✅ Formulir berhasil dikirim ke pengelola server.');
       return true;

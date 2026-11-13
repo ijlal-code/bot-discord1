@@ -41,11 +41,13 @@ server.listen(PORT, () => {
 // 2. KONFIGURASI ENVIRONMENT & CLIENT
 // =========================================================================
 const TOKEN = process.env.DISCORD_TOKEN;
-const GUILD_ID = process.env.GUILD_ID || '1569980330629275819';
-if (!process.env.GUILD_ID) console.warn(`[CONFIG] GUILD_ID belum diatur; menggunakan ID lama ${GUILD_ID}. Pastikan ini ID server yang benar.`);
-
-if (!TOKEN) {
-  console.error('[ERROR] Variabel DISCORD_TOKEN belum diatur pada Environment Render.');
+const GUILD_ID = process.env.GUILD_ID;
+if (!TOKEN || !GUILD_ID) {
+  console.error('[CONFIG ERROR] DISCORD_TOKEN dan GUILD_ID wajib diatur lewat environment Render.');
+  process.exit(1);
+}
+if (!/^\d{15,22}$/.test(GUILD_ID)) {
+  console.error('[CONFIG ERROR] GUILD_ID harus berupa ID server Discord yang valid.');
   process.exit(1);
 }
 

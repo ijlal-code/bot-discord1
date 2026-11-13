@@ -1,4 +1,4 @@
-const assert=require('node:assert/strict');const {ActionRowBuilder,StringSelectMenuBuilder,ChannelSelectMenuBuilder,ChannelType}=require('discord.js');const {intercept,buttons}=require('./selection-continue');
+const assert=require('node:assert/strict');const {ActionRowBuilder,StringSelectMenuBuilder,ChannelSelectMenuBuilder,ChannelType,ButtonBuilder,ButtonStyle}=require('discord.js');const {intercept,buttons}=require('./selection-continue');
 const row=x=>new ActionRowBuilder().addComponents(x);const comps=[row(new StringSelectMenuBuilder().setCustomId('community:initial-message:abc').setPlaceholder('Pilih').addOptions({label:'Satu',value:'1'},{label:'Dua',value:'2'})),buttons()];
 const old={id:'123',components:comps,content:'Pilih'};
 function select(values=['1']){return {customId:'community:initial-message:abc',user:{id:'u'},guildId:'g',channelId:'ch',message:old,values,isButton:()=>false,isChannelSelectMenu:()=>false,isUserSelectMenu:()=>false,isStringSelectMenu:()=>true,async update(v){this.output=v}}}
@@ -6,6 +6,7 @@ function select(values=['1']){return {customId:'community:initial-message:abc',u
  let calls=0;const b={customId:btn.custom_id,user:{id:'u'},guildId:'g',channelId:'ch',message:old,isButton:()=>true,async reply(x){this.output=x}};
  const handler=async(i)=>{calls++;assert.equal(i.customId,'community:initial-message:abc');assert.deepEqual(i.values,['1']);assert(i.isStringSelectMenu());assert(!i.isButton());};
  assert(await intercept(b,handler));assert(await intercept(b,handler));assert.equal(calls,2); // Modal ditutup; Lanjutkan tetap bisa diulang
+ const nav=row(new ButtonBuilder().setCustomId('community:backup-first:abc').setLabel('Kembali ke awal').setStyle(ButtonStyle.Secondary));const withNav={...select(),message:{...old,components:[...comps,nav]}};await intercept(withNav,handler);assert.equal(withNav.output.components.length,3);assert.equal(withNav.output.components[2].components[0].label,'Kembali ke awal');
  const other={...b,user:{id:'other'}};await intercept(other,handler);assert.match(other.output.content,/kedaluwarsa/);
  const channelRow=row(new ChannelSelectMenuBuilder().setCustomId('community:select-edit').addChannelTypes(ChannelType.GuildCategory));const c={...select(),customId:'community:select-edit',values:['100000000000000011'],message:{...old,components:[channelRow,buttons()]},isChannelSelectMenu:()=>true,isStringSelectMenu:()=>false};await intercept(c,handler);assert.equal(c.output.components[0].components[0].default_values[0].type,'channel');new ActionRowBuilder(c.output.components[0]).toJSON();
  console.log('LULUS: dropdown simpan pilihan, Lanjutkan berulang dan isolasi pengguna.');})().catch(e=>{console.error(e);process.exitCode=1});

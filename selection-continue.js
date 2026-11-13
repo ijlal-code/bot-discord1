@@ -21,7 +21,8 @@ async function intercept(i,handle){
  else select.default_values=i.values.map(id=>({id,type:kind}));
  for(const [key,v] of sessions)if(v.expires<Date.now())sessions.delete(key);
  const key=crypto.randomBytes(12).toString('hex');sessions.set(key,{id:i.customId,kind,values:[...i.values],user:i.user.id,guild:i.guildId,channel:i.channelId,message:i.message.id,expires:Date.now()+15*60*1000});
- await i.update({content:'Pilihan tersimpan. Tekan **Lanjutkan** untuk membuka langkah berikutnya, atau pilih ulang. Jika formulir ditutup tanpa menyimpan, tekan Lanjutkan lagi.',components:[selectRow,buttons(`community:continue:${key}`)],allowedMentions:{parse:[]}});
+ const extras=i.message.components.map(r=>r.toJSON()).filter(r=>!r.components?.some(c=>c.custom_id===i.customId||c.custom_id==='community:cancel-selection')).slice(0,3);
+ await i.update({content:'Pilihan tersimpan. Tekan **Lanjutkan** untuk membuka langkah berikutnya, atau pilih ulang. Jika formulir ditutup tanpa menyimpan, tekan Lanjutkan lagi.',components:[selectRow,buttons(`community:continue:${key}`),...extras],allowedMentions:{parse:[]}});
  return true;
 }
 module.exports={buttons,intercept};
