@@ -79,9 +79,11 @@ function channelSelect(action) {
 function hasPanel(message, id) {
   return message.components.some(r => r.components.some(c => c.customId === id));
 }
-async function ensurePanel(channel, client, id, panel) {
+async function ensurePanel(channel, client, id, panel, refresh = false) {
   const messages = await channel.messages.fetch({ limit: 100 });
-  if (!messages.some(m => m.author.id === client.user.id && hasPanel(m, id))) await channel.send(panel);
+  const existing = messages.find(m => m.author.id === client.user.id && hasPanel(m, id));
+  if (!existing) await channel.send(panel);
+  else if (refresh) await existing.edit(panel);
 }
 function privateOverwrites(guild, client, owner) {
   return [
@@ -121,7 +123,7 @@ async function setupCommunity(guild, client) {
   ], 'Jadikan feedback-and-request kanal formulir tanpa chat');
   await ensurePanel(made[MANAGE], client, 'community:add', managePanel());
   await ensurePanel(made[MANAGE_CHANNEL], client, 'community:channel-add', channelManagePanel());
-  await ensurePanel(made[SETTINGS_CHANNEL], client, 'community:welcome-edit:announcements', welcomePanel());
+  await ensurePanel(made[SETTINGS_CHANNEL], client, 'community:welcome-edit:announcements', welcomePanel(), true);
   await ensurePanel(feedback, client, 'community:feedback', feedbackPanel());
   let welcomeWarning = null;
   try { await suppressSystemWelcome(guild); }
