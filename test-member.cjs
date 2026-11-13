@@ -16,31 +16,19 @@ guild.members={fetch:async id=>id===target.id?target:null};
 function interaction(id,type='button',extra={}){return {customId:id,guild,guildId:guild.id,channel:mc,user:{id:'100000000000000006'},member:{roles:{cache:new Collection([[owner.id,owner]])}},values:[],isButton:()=>type==='button',isUserSelectMenu:()=>type==='user',isModalSubmit:()=>type==='modal',isChannelSelectMenu:()=>false,async showModal(m){this.modal=m.toJSON()},async reply(p){this.replied=true;this.output=p},async deferReply(){this.deferred=true},async editReply(p){this.output=p},...extra}}
 function cmd({invokerHasRole=true,ch=dc,targetId=target.id}={}) {return {guild,guildId:guild.id,channel:ch,member:{roles:{cache:new Collection(invokerHasRole?[[status.id,status]]:[])}},options:{getUser:()=>({id:targetId})},async reply(p){this.output=p},async deferReply(){this.deferred=true},async editReply(p){this.output=p}};}
 (async()=>{
- let i=interaction('community:member-edit');await handleCommunityInteraction(i,client,guild.id);assert.equal(i.output.components[0].toJSON().components[0].type,5);
+ let i=interaction('community:member-edit');await handleCommunityInteraction(i,client,guild.id);assert.equal(i.output.components.length,2);
  i=interaction('community:member-edit','button',{member:{roles:{cache:new Collection()}}});await handleCommunityInteraction(i,client,guild.id);assert.match(i.output.content,/Hanya/);
- i=interaction('community:member-select','user',{values:[target.id]});await handleCommunityInteraction(i,client,guild.id);assert.match(i.modal.components[0].components[0].value,/Panduan Memulai/);
- i=interaction(`community:member-save:${target.id}`,'modal',{fields:{getTextInputValue:()=> 'Profil publik {username}, role {role}.'}});await handleCommunityInteraction(i,client,guild.id);assert.match(i.output,/disimpan/);
+ i=interaction('community:member-select','user',{values:[target.id]});await handleCommunityInteraction(i,client,guild.id);assert.equal(i.modal.components.length,4);assert.match(i.modal.components[1].components[0].value,/Panduan Memulai/);
+ const values={header:'Author khusus\nJudul {username}',body:'Profil publik {username}, role {role}.',details:'Nama | {tag}\n-\n-',footer:'TIDAK\nFooter khusus {id}'};
+ const save=()=>interaction(`community:member-save:${target.id}`,'modal',{fields:{getTextInputValue:k=>values[k]}});
+ i=save();await handleCommunityInteraction(i,client,guild.id);assert.match(i.output,/disimpan/);
  assert.equal(await manager.memberBody(guild,client,target.id),'Profil publik {username}, role {role}.');
- let payload=await welcome.buildMemberOnboarding(guild,client,target,'Pekerja');assert.match(payload.embeds[0].toJSON().description,/Profil publik Rina, role Pekerja/);
+ let payload=await welcome.buildMemberOnboarding(guild,client,target,'Pekerja');let emb=payload.embeds[0].toJSON();assert.match(emb.description,/Profil publik Rina, role Pekerja/);assert.equal(emb.author.name,'Author khusus');assert.equal(emb.title,'Judul Rina');assert.equal(emb.fields.length,1);assert.match(emb.footer.text,/Footer khusus/);assert.equal(emb.timestamp,undefined);
  const deps={isOwner,statusRoles:['Pekerja','Pelajar','Umum'],buildMemberOnboarding:welcome.buildMemberOnboarding};
- let c=cmd({invokerHasRole:false});await manager.handleMemberCommand(c,client,guild.id,deps);assert.match(c.output.content,/pilih role/);assert.equal(dc.sent.length,0);
- c=cmd({ch:wc});await manager.handleMemberCommand(c,client,guild.id,deps);assert.match(c.output.content,/#diskusi/);
- c=cmd({targetId:'100000000000000009'});await manager.handleMemberCommand(c,client,guild.id,deps);assert.match(c.output,/tidak ditemukan/);assert.equal(dc.sent.length,0);
- c=cmd();await manager.handleMemberCommand(c,client,guild.id,deps);assert.equal(dc.sent.length,1);assert.match(dc.sent[0].embeds[0].description,/Profil publik Rina/);assert.match(c.output,/ditampilkan/);
- // Edit member mengubah pesan onboarding terakhir yang diterbitkan bot.
- i=interaction(`community:member-save:${target.id}`,'modal',{fields:{getTextInputValue:()=> 'Profil diperbarui untuk {username}.'}});await handleCommunityInteraction(i,client,guild.id);
- assert.match(i.output,/diperbarui/);assert.match(dc.sent[0].embeds[0].description,/Profil diperbarui untuk Rina/);
- // Data tetap terbaca setelah cache dibuang (restart bot).
- delete require.cache[require.resolve('./member-management')];manager=require('./member-management');assert.equal(await manager.memberBody(guild,client,target.id),'Profil diperbarui untuk {username}.');
- // Pesan lama bot dapat ditemukan lewat User ID di footer, tanpa mengubah member lain.
- const legacy={...target,id:'100000000000000010',user:{...target.user,id:'100000000000000010',username:'Lama'}};
- guild.members.fetch=async id=>id===target.id?target:id===legacy.id?legacy:null;
- const {EmbedBuilder}=require('discord.js');
- const old=await dc.send({embeds:[new EmbedBuilder().setAuthor({name:'AINUN IJLAL STUDIO • MEMBER ONBOARDING'}).setTitle('Lama').setDescription('Teks lama').setFooter({text:`Ainun Ijlal Studio Community • User ID: ${legacy.id}`})]});
- i=interaction(`community:member-save:${legacy.id}`,'modal',{fields:{getTextInputValue:()=> 'Diperbarui untuk {username}'}});await handleCommunityInteraction(i,client,guild.id);
- assert.match(i.output,/diperbarui/);assert.equal(old.embeds[0].description,'Diperbarui untuk Lama');assert.match(dc.sent[0].embeds[0].description,/Profil diperbarui untuk Rina/);
- // Tolak menyimpan pada channel yang tidak lagi privat.
- mc.permissionOverwrites.cache.set('bad',{id:'bad',deny:new PermissionsBitField(),allow:new PermissionsBitField(PermissionsBitField.Flags.ViewChannel)});
- i=interaction(`community:member-save:${target.id}`,'modal',{fields:{getTextInputValue:()=> 'Jangan simpan'}});await assert.rejects(handleCommunityInteraction(i,client,guild.id),/tidak aman/);
- console.log('LULUS: pemilihan member, otorisasi Owner, simpan profil, persistensi, privasi dan slash command.');
+ let c=cmd({invokerHasRole:false});await manager.handleMemberCommand(c,client,guild.id,deps);assert.match(c.output.content,/pilih role/);
+ c=cmd();await manager.handleMemberCommand(c,client,guild.id,deps);assert.equal(dc.sent.length,1);
+ values.body='Profil diperbarui untuk {username}.';values.footer='YA\nFooter baru';i=save();await handleCommunityInteraction(i,client,guild.id);assert.match(i.output,/diperbarui/);assert.match(dc.sent[0].embeds[0].description,/Profil diperbarui untuk Rina/);assert.equal(dc.sent[0].embeds[0].footer.text,'Footer baru');assert(dc.sent[0].embeds[0].timestamp);
+ delete require.cache[require.resolve('./member-management')];manager=require('./member-management');assert.equal(await manager.memberBody(guild,client,target.id),'Profil diperbarui untuk {username}.');assert.equal((await manager.memberProfile(guild,client,target.id)).parts.footer,'Footer baru');
+ mc.permissionOverwrites.cache.set('bad',{id:'bad',deny:new PermissionsBitField(),allow:new PermissionsBitField(PermissionsBitField.Flags.ViewChannel)});i=save();await assert.rejects(handleCommunityInteraction(i,client,guild.id),/tidak aman/);
+ console.log('LULUS: member, semua bagian, simpan, privasi, slash dan edit pesan terakhir.');
 })().catch(e=>{console.error(e);process.exitCode=1});

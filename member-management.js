@@ -3,6 +3,7 @@ const {
   ModalBuilder, TextInputBuilder, TextInputStyle, UserSelectMenuBuilder, PermissionsBitField,
 } = require('discord.js');
 
+const editor = require('./editor-template');
 const MEMBER_CHANNEL = 'kelola-member';
 const CATEGORY = '🔐 KELOLA KOMUNITAS';
 const PROFILE_MARKER = 'member-onboarding:v1:';
@@ -13,7 +14,7 @@ const saving = new Set();
 const row = (...items) => new ActionRowBuilder().addComponents(...items);
 function memberPanel() {
   return { embeds: [new EmbedBuilder().setColor(0x1e293b).setTitle('Kelola onboarding member')
-    .setDescription('Pilih member untuk mengatur isi onboarding khususnya di #diskusi. Bot memperbarui pesan onboarding terakhirnya yang dapat ditemukan. Isi ini juga ditampilkan secara publik melalui `/onboarding-member`; jangan masukkan data rahasia. Jika belum diatur, bot memakai isi onboarding diskusi umum.')],
+    .setDescription('Pilih member untuk mengatur author, judul, isi, informasi, footer, dan waktu onboarding khusus di #diskusi. Bot memperbarui pesan onboarding terakhirnya yang dapat ditemukan. Isi ini juga ditampilkan secara publik melalui `/onboarding-member`; jangan masukkan data rahasia. Jika belum diatur, bot memakai isi onboarding diskusi umum.')],
     components: [row(new ButtonBuilder().setCustomId('community:member-edit').setLabel('Edit onboarding member').setStyle(ButtonStyle.Primary))],
     allowedMentions: { parse: [] } };
 }
@@ -50,31 +51,34 @@ async function findMessage(channel, client, footerText) {
   } while (before);
   return null;
 }
-async function memberBody(guild, client, memberId) {
+async function memberProfile(guild, client, memberId) {
   const key = `${guild.id}:${memberId}`;
   if (cache.has(key)) return cache.get(key);
   const channel = await memberChannel(guild, client);
   if (!channel) return null;
   const record = await findMessage(channel, client, PROFILE_MARKER + memberId);
   if (!record) { cache.set(key, null); return null; }
-  const body = record.embeds[0]?.description || null;
-  if (body) cache.set(key, body);
-  return body;
+  const embed = record.embeds[0];
+  const parts = {};
+  for (const f of embed?.fields || []) if (f.name.startsWith('setting:')) parts[f.name.slice(8)] = f.value === '\u200b' ? '' : f.value;
+  const profile = embed?.description ? { body: embed.description, parts } : null;
+  if (profile) cache.set(key, profile);
+  return profile;
 }
-async function handleMemberInteraction(i, client, readGeneralBody, updateLastMessage) {
+async function memberBody(guild, client, memberId) { return (await memberProfile(guild, client, memberId))?.body || null; }
+async function handleMemberInteraction(i, client, readGeneralConfig, updateLastMessage) {
   if (i.isButton() && i.customId === 'community:member-edit') {
     await i.reply({ content: 'Pilih member yang onboarding-nya ingin diedit. Isi akan dapat dilihat di #diskusi melalui slash command.',
-      components: [row(new UserSelectMenuBuilder().setCustomId('community:member-select').setPlaceholder('Pilih satu member').setMinValues(1).setMaxValues(1))],
+      components: [row(new UserSelectMenuBuilder().setCustomId('community:member-select').setPlaceholder('Pilih satu member').setMinValues(1).setMaxValues(1)), row(new ButtonBuilder().setCustomId('community:cancel-selection').setLabel('Batal').setStyle(ButtonStyle.Secondary))],
       flags: MessageFlags.Ephemeral });
   } else if (i.isUserSelectMenu() && i.customId === 'community:member-select') {
     if (i.values.length !== 1) throw new Error('Pilih tepat satu member.');
     const userId = i.values[0];
     const member = await i.guild.members.fetch(userId).catch(() => null);
     if (!member || member.user.bot) throw new Error('Member tidak ditemukan atau akun adalah bot.');
-    const body = await memberBody(i.guild, client, userId) || await readGeneralBody(i.guild, client);
-    const text = new TextInputBuilder().setCustomId('body').setLabel('Isi onboarding publik member ini')
-      .setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(3000).setValue(body);
-    await i.showModal(new ModalBuilder().setCustomId(`community:member-save:${userId}`).setTitle('Edit onboarding member').addComponents(row(text)));
+    const [general, profile] = await Promise.all([readGeneralConfig(i.guild, client, 'diskusi'), memberProfile(i.guild, client, userId)]);
+    const config = profile ? {body: profile.body, parts: {...general.parts, ...profile.parts}} : general;
+    await i.showModal(editor.modal(`community:member-save:${userId}`, 'Edit onboarding member', config));
   } else if (i.isModalSubmit() && i.customId.startsWith('community:member-save:')) {
     const memberId = i.customId.split(':')[2];
     if (!/^\d{15,22}$/.test(memberId)) throw new Error('ID member tidak valid.');
@@ -85,17 +89,17 @@ async function handleMemberInteraction(i, client, readGeneralBody, updateLastMes
     try {
       const member = await i.guild.members.fetch(memberId).catch(() => null);
       if (!member || member.user.bot) { await i.editReply('Member tidak ditemukan atau akun adalah bot.'); return; }
-      const body = i.fields.getTextInputValue('body').trim();
-      if (!body || body.length > 3000) { await i.editReply('Isi wajib diisi dan maksimal 3.000 karakter.'); return; }
-      // Tolak penyimpanan jika channel tidak lagi privat.
+      let profile;
+      try { profile = editor.read(i.fields); } catch (e) { await i.editReply(`❌ ${e.message}`); return; }
       const privateChannel = await memberChannel(i.guild, client);
       if (!privateChannel || privateChannel.id !== i.channel.id) throw new Error('Channel #kelola-member tidak aman.');
       const existing = await findMessage(privateChannel, client, PROFILE_MARKER + memberId);
       const embed = new EmbedBuilder().setColor(0x334155).setTitle(`Onboarding member ${memberId}`)
-        .setDescription(body).setFooter({ text: PROFILE_MARKER + memberId });
+        .setDescription(profile.body).addFields(Object.entries(profile.parts).map(([name,value])=>({name:`setting:${name}`,value:value || '\u200b'})))
+        .setFooter({ text: PROFILE_MARKER + memberId });
       const payload = { embeds: [embed], allowedMentions: { parse: [] } };
       if (existing) await existing.edit(payload); else await privateChannel.send(payload);
-      cache.set(key, body);
+      cache.set(key, profile);
       let result;
       try { result = await updateLastMessage(i.guild, client, member); }
       catch (error) { result = false; console.error('[ONBOARDING EDIT]', error); }
@@ -182,4 +186,4 @@ async function markDone(member, record) {
     .setFooter({ text: stateKey(member, 'done') });
   await record.edit({ embeds: [embed], allowedMentions: { parse: [] } });
 }
-module.exports = { MEMBER_CHANNEL, memberPanel, handleMemberInteraction, handleMemberCommand, memberBody, recordJoined, pendingRecord, markDone, trackMemberMessage, lastMemberMessage };
+module.exports = { MEMBER_CHANNEL, memberPanel, handleMemberInteraction, handleMemberCommand, memberBody, memberProfile, recordJoined, pendingRecord, markDone, trackMemberMessage, lastMemberMessage };

@@ -17,10 +17,10 @@ guild.channels.create=async opt=>channel(opt.name,opt.type,opt.parent||null,opt.
 const feedback=channel('feedback-and-request');
 const messages=[];
 function interaction(id,{channel:ch,memberRoles=[owner],type='button',values=[],fields={}}={}){
- return {customId:id,guild,guildId:guild.id,channel:ch,user:{id:'100000000000000005',tag:'test#0001'},member:{roles:{cache:new Collection(memberRoles.map(x=>[x.id,x]))}},values, fields:{getTextInputValue:k=>fields[k]},isButton:()=>type==='button',isModalSubmit:()=>type==='modal',isChannelSelectMenu:()=>type==='select',async reply(p){this.replied=true;this.output=p;messages.push(p)},async update(p){this.replied=true;this.output=p;messages.push(p)},async deferReply(){this.deferred=true},async deferUpdate(){this.deferred=true},async editReply(p){this.output=p;messages.push(p)},async showModal(m){this.modal=m.toJSON()}};
+ return {customId:id,guild,guildId:guild.id,channel:ch,user:{id:'100000000000000005',tag:'test#0001'},member:{roles:{cache:new Collection(memberRoles.map(x=>[x.id,x]))}},values, fields:{getTextInputValue:k=>fields[k]},isButton:()=>type==='button',isModalSubmit:()=>type==='modal',isChannelSelectMenu:()=>type==='select',async reply(p){this.replied=true;this.output=p;messages.push(p)},async update(p){this.replied=true;this.output=p;messages.push(p)},async deferReply(){this.deferred=true},async deferUpdate(){this.deferred=true},async deleteReply(){this.deleted=true},async editReply(p){this.output=p;messages.push(p)},async showModal(m){this.modal=m.toJSON()}};
 }
 (async()=>{
- const installed=await setupCommunity(guild,client); assert(installed.manage && installed.inbox && installed.member);assert.equal(installed.member.name,'kelola-member');assert.equal(installed.member.parentId,installed.category.id);assert.equal(installed.member.sent.length,1);
+ const installed=await setupCommunity(guild,client); assert(installed.manage && installed.inbox && installed.member && installed.messageEditor);assert.equal(installed.messageEditor.parentId,installed.category.id);assert.equal(installed.member.name,'kelola-member');assert.equal(installed.member.parentId,installed.category.id);assert.equal(installed.member.sent.length,1);
  assert(installed.inbox.permissionOverwrites.cache.get(guild.id).deny.has(PermissionsBitField.Flags.ViewChannel));
  assert(feedback.permissionOverwrites.cache.get(guild.id).deny.has(PermissionsBitField.Flags.SendMessages));
  assert(!feedback.permissionOverwrites.cache.has(worker.id));
@@ -30,6 +30,8 @@ function interaction(id,{channel:ch,memberRoles=[owner],type='button',values=[],
  i=interaction('community:feedback',{channel:feedback,memberRoles:[]}); await handleCommunityInteraction(i,client,guild.id); assert.match(i.output.content,/pilih role/);
  i=interaction('community:add',{channel:installed.manage,memberRoles:[]});await handleCommunityInteraction(i,client,guild.id);assert.match(i.output.content,/Hanya/);
  i=interaction('community:add',{channel:installed.manage});await handleCommunityInteraction(i,client,guild.id);assert.equal(i.modal.title,'Tambah kategori');
+ i=interaction('community:edit',{channel:installed.manage});await handleCommunityInteraction(i,client,guild.id);assert.equal(i.output.components.length,2);
+ i=interaction('community:cancel-selection',{channel:installed.manage});await handleCommunityInteraction(i,client,guild.id);assert(i.deleted);
  i=interaction('community:add-submit',{channel:installed.manage,type:'modal',fields:{names:'Alpha\nBeta'}});await handleCommunityInteraction(i,client,guild.id);assert.match(i.output.content,/2 dibuat/);
  const a=channels.find(c=>c.name==='Alpha'),b=channels.find(c=>c.name==='Beta');
  i=interaction('community:select-edit',{channel:installed.manage,type:'select',values:[a.id,b.id]});await handleCommunityInteraction(i,client,guild.id);let modalId=i.modal.custom_id;
@@ -54,7 +56,7 @@ function interaction(id,{channel:ch,memberRoles=[owner],type='button',values=[],
  i=interaction('community:channel-select-delete',{channel:managed,type:'select',values:[c1.id,c2.id]}); await handleCommunityInteraction(i,client,guild.id); let confirmChannel=i.output.components[0].toJSON().components[0].custom_id; assert.match(i.output.content,/permanen/); assert.match(i.output.embeds[0].toJSON().description,/kedua/);
  i=interaction(confirmChannel,{channel:managed}); i.user.id='100000000000000099'; await handleCommunityInteraction(i,client,guild.id); assert.match(i.output.content,/kedaluwarsa/); assert(channels.has(c1.id));
  i=interaction(confirmChannel,{channel:managed}); await handleCommunityInteraction(i,client,guild.id); assert(!channels.has(c1.id) && !channels.has(c2.id));
- for (const protectedCh of [installed.manage,installed.manageChannels,installed.inbox,installed.welcome,installed.member]) {
+ for (const protectedCh of [installed.manage,installed.manageChannels,installed.inbox,installed.welcome,installed.member,installed.messageEditor]) {
    i=interaction('community:channel-select-delete',{channel:managed,type:'select',values:[protectedCh.id]}); await handleCommunityInteraction(i,client,guild.id); assert.match(i.output.content,/dilindungi/);
  }
  i=interaction('community:channel-create-category',{channel:managed,type:'select',values:[category.id]}); await handleCommunityInteraction(i,client,guild.id); typeButton=i.output.components[0].toJSON().components[1].custom_id;

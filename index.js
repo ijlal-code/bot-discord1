@@ -123,21 +123,10 @@ client.once('clientReady', async () => {
 
       if (rulesCh) {
         const msgs = await rulesCh.messages.fetch({ limit: 10 }).catch(() => null);
-        const hasUpdatedPanel = msgs?.some(
-          (m) => m.author.id === client.user.id && m.components.length === 1
-        );
-
+        const hasUpdatedPanel = msgs?.some(m => m.author.id === client.user.id && m.components.some(row => row.components.some(c => c.customId?.startsWith('select_role:'))));
         if (!hasUpdatedPanel) {
-          const oldBotMsgs = msgs?.filter((m) => m.author.id === client.user.id);
-          if (oldBotMsgs) {
-            for (const [, oldMsg] of oldBotMsgs) {
-              await oldMsg.delete().catch(() => {});
-            }
-          }
-          await rulesCh.send(buildRulesAndRolePanel(targetGuild)).catch((err) => {
-            console.error('[PANEL SEND ERROR]', err.message);
-          });
-          console.log('[PANEL] Panel tombol pilih role terbaru berhasil diperbarui di #rules-and-role.');
+          await rulesCh.send(buildRulesAndRolePanel(targetGuild)).catch(err => console.error('[PANEL SEND ERROR]', err.message));
+          console.log('[PANEL] Panel role disiapkan tanpa menghapus pesan lain.');
         }
       }
     }
@@ -153,10 +142,10 @@ client.once('clientReady', async () => {
 client.on('guildMemberAdd', async (member) => {
   if (member.guild.id !== GUILD_ID || member.user.bot) return;
   try {
-    // Tidak ada DM atau auto-role. Hanya embed ke #announcements saat bergabung.
+    // Tidak ada DM atau auto-role. Embed welcome ke #diskusi saat bergabung.
     await announceJoin(member, client);
   } catch (error) {
-    console.error('[WELCOME ANNOUNCEMENTS ERROR]', error);
+    console.error('[WELCOME JOIN ERROR]', error);
   }
 });
 
@@ -201,7 +190,7 @@ client.on('interactionCreate', async (interaction) => {
     try {
       const result = await setupCommunity(interaction.guild, client);
       const feedbackText = result.feedbackWarning ? `⚠️ ${result.feedbackWarning}` : `Formulir tersedia di ${result.feedback}.`;
-      await interaction.editReply({ content: `✅ Kanal privat siap: ${result.manage}, ${result.manageChannels}, ${result.welcome}, ${result.member}, dan ${result.inbox}. ${feedbackText}${result.welcomeWarning ? ` ⚠️ ${result.welcomeWarning}` : ''}`, allowedMentions: { parse: [] } });
+      await interaction.editReply({ content: `✅ Kanal privat siap: ${result.manage}, ${result.manageChannels}, ${result.welcome}, ${result.member}, ${result.messageEditor}, dan ${result.inbox}. ${feedbackText}${result.welcomeWarning ? ` ⚠️ ${result.welcomeWarning}` : ''}`, allowedMentions: { parse: [] } });
     } catch (error) {
       console.error('[SETUP KOMUNITAS ERROR]', error);
       await interaction.editReply({ content: `❌ Setup belum selesai: ${error.message}. Periksa izin bot lalu jalankan ulang /setup-komunitas.` });

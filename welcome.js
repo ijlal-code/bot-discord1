@@ -2,7 +2,8 @@ const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder,
   MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, SystemChannelFlagsBitField,
 } = require('discord.js');
-const { memberBody, recordJoined, pendingRecord, markDone, trackMemberMessage, lastMemberMessage } = require('./member-management');
+const editor = require('./editor-template');
+const { memberProfile, recordJoined, pendingRecord, markDone, trackMemberMessage, lastMemberMessage } = require('./member-management');
 
 const SETTINGS_CHANNEL = 'kelola-embed-welcome-member';
 const CATEGORY_NAME = '🔐 KELOLA KOMUNITAS';
@@ -35,6 +36,8 @@ const DEFAULTS = {
     '• **Verifikasi Role Status:** Anda telah memilih role **{role}** dan dapat mulai berdiskusi.\n' + COMMON_GUIDE + LINKS,
 };
 const DEFAULT_PARTS = {
+  author: editor.DEFAULT_AUTHOR,
+  title: editor.DEFAULT_TITLE,
   user: 'Nama Pengguna | `{tag}`',
   count: 'Anggota Ke | **#{member_count}**',
   created: 'Akun Dibuat | {account_created}',
@@ -46,15 +49,11 @@ const row = (...items) => new ActionRowBuilder().addComponents(...items);
 
 function welcomePanel() {
   return {
-    embeds: [new EmbedBuilder().setColor(0x1e293b).setTitle('Kelola pesan onboarding')
-      .setDescription('Edit isi dan bagian informasi untuk setiap channel secara terpisah. Pada menu bagian, kosongkan field/footer untuk menyembunyikannya; ubah waktunya menjadi TIDAK untuk menyembunyikan timestamp.\n\n' +
-        '`#announcements`: saat bergabung. `#diskusi`: setelah memilih role.\n' +
-        'Field memakai format `Judul | Isi`. Variabel: `{member}`, `{username}`, `{tag}`, `{id}`, `{server}`, `{member_count}`, `{role}`, `{account_created}`, `{rules}`, `{diskusi}`, `{template}`. Perubahan berlaku untuk pesan berikutnya.')],
+    embeds: [new EmbedBuilder().setColor(0x1e293b).setTitle('Kelola pesan welcome & onboarding')
+      .setDescription('Kedua pesan dikirim di #diskusi. Satu tombol membuka semua bagian untuk masing-masing pesan: author, judul, isi, informasi, footer, dan waktu.\n\n**Welcome member baru** dikirim saat bergabung, sebelum memilih role. **Onboarding setelah role** dikirim setelah memilih role pertama. Pengaturan sebelumnya tetap digunakan dan hanya berlaku untuk pesan berikutnya.\n\nHeader terdiri dari dua baris: author dan judul. Informasi tiga baris memakai `Judul | Isi`; gunakan `-` untuk menyembunyikan. Baris pertama footer YA/TIDAK untuk waktu, sisanya teks footer. Variabel: `{member}`, `{username}`, `{tag}`, `{id}`, `{server}`, `{member_count}`, `{role}`, `{account_created}`, `{rules}`, `{diskusi}`, `{template}`.')],
     components: [row(
-      new ButtonBuilder().setCustomId('community:welcome-edit:announcements').setLabel('Isi announcements').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('community:welcome-parts:announcements').setLabel('Bagian announcements').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('community:welcome-edit:diskusi').setLabel('Isi diskusi').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('community:welcome-parts:diskusi').setLabel('Bagian diskusi').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('community:welcome-edit:announcements').setLabel('Edit welcome member baru').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('community:welcome-edit:diskusi').setLabel('Edit onboarding setelah role').setStyle(ButtonStyle.Primary)
     )], allowedMentions: { parse: [] },
   };
 }
@@ -117,64 +116,28 @@ async function saveConfig(guild, client, target, config, channel) {
   if (existing) await existing.edit(payload); else await channel.send(payload);
   configCache.set(`${guild.id}:${target}`, config);
 }
-function partInput(id, label, value, required = false, max = 600) {
-  const input = new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(required).setMaxLength(max);
-  if (value) input.setValue(value);
-  return row(input);
-}
-function validPart(text) {
-  if (!text) return true;
-  const n = text.indexOf('|');
-  return n > 0 && !!text.slice(0, n).trim() && !!text.slice(n + 1).trim() && text.slice(0, n).trim().length <= 128;
-}
 async function handleWelcomeInteraction(i, client) {
-  const parts = i.customId.split(':');
-  const target = parts[2];
+  const [_, action, target] = i.customId.split(':');
   if (!['announcements', 'diskusi'].includes(target)) throw new Error('Pilihan welcome tidak valid.');
-  if (i.isButton() && parts[1] === 'welcome-edit') {
+  if (i.isButton() && action === 'welcome-edit') {
     const config = await readConfig(i.guild, client, target, true);
-    const field = new TextInputBuilder().setCustomId('body').setLabel('Isi pesan onboarding')
-      .setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(3000).setValue(config.body);
-    await i.showModal(new ModalBuilder().setCustomId(`community:welcome-save:${target}`).setTitle(`Onboarding #${target}`).addComponents(row(field)));
+    await i.showModal(editor.modal(`community:welcome-save-all:${target}`, target === 'announcements' ? 'Welcome member baru' : 'Onboarding setelah role', config));
     return;
   }
-  if (i.isButton() && parts[1] === 'welcome-parts') {
-    const config = await readConfig(i.guild, client, target, true);
-    await i.showModal(new ModalBuilder().setCustomId(`community:welcome-parts-save:${target}`).setTitle(`Bagian #${target}`).addComponents(
-      partInput('user', 'Nama pengguna: Judul | Isi', config.parts.user),
-      partInput('count', 'Anggota ke: Judul | Isi', config.parts.count),
-      partInput('created', 'Akun dibuat: Judul | Isi', config.parts.created),
-      partInput('footer', 'Footer (kosong untuk sembunyikan)', config.parts.footer, false, 500),
-      partInput('timestamp', 'Waktu pesan: YA atau TIDAK', config.parts.timestamp, true, 5)));
-    return;
-  }
-  if (i.isModalSubmit() && ['welcome-save', 'welcome-parts-save'].includes(parts[1])) {
+  if (i.isModalSubmit() && action === 'welcome-save-all') {
     await i.deferReply({ flags: MessageFlags.Ephemeral });
     const key = `${i.guildId}:${target}`;
     if (savesInFlight.has(key)) { await i.editReply('Pengaturan sedang disimpan. Coba lagi sebentar.'); return; }
     savesInFlight.add(key);
     try {
-      const loaded = await readConfig(i.guild, client, target, true);
-      const config = { body: loaded.body, parts: { ...loaded.parts } };
-      if (parts[1] === 'welcome-save') {
-        const body = i.fields.getTextInputValue('body').trim();
-        if (!body || body.length > 3000) { await i.editReply('Isi wajib diisi dan maksimal 3.000 karakter.'); return; }
-        config.body = body;
-      } else {
-        const updated = {};
-        for (const name of ['user', 'count', 'created', 'footer', 'timestamp']) updated[name] = (i.fields.getTextInputValue(name) || '').trim();
-        updated.timestamp = updated.timestamp.toUpperCase();
-        if (!['YA', 'TIDAK'].includes(updated.timestamp) || !['user', 'count', 'created'].every(name => validPart(updated[name]))) {
-          await i.editReply('Gunakan format Judul | Isi, atau kosongkan untuk menyembunyikan; waktu harus YA atau TIDAK.'); return;
-        }
-        config.parts = updated;
-      }
+      let config;
+      try { config = editor.read(i.fields); } catch (e) { await i.editReply(`❌ ${e.message}`); return; }
       await saveConfig(i.guild, client, target, config, i.channel);
-      await i.editReply(`✅ Pengaturan onboarding #${target} disimpan untuk pesan berikutnya.`);
+      await i.editReply('✅ Semua pengaturan disimpan untuk pesan berikutnya di #diskusi.');
     } finally { savesInFlight.delete(key); }
     return;
   }
-  throw new Error('Interaksi welcome tidak dikenal.');
+  throw new Error('Panel lama sudah tidak berlaku. Jalankan /setup-komunitas dan gunakan panel terbaru.');
 }
 function channelMention(guild, name) {
   const channel = guild.channels.cache.find(c => c && c.type === ChannelType.GuildText && c.name === name);
@@ -194,9 +157,11 @@ function renderOnboarding(config, member, role, customBody) {
   const iconURL = member.guild.iconURL?.({ dynamic: true }) || undefined;
   const avatar = member.user.displayAvatarURL?.({ dynamic: true, size: 256 }) || undefined;
   const embed = new EmbedBuilder().setColor(0x0f172a)
-    .setAuthor({ name: 'AINUN IJLAL STUDIO • MEMBER ONBOARDING', iconURL })
-    .setTitle(`Selamat Datang, ${member.user.username}`.slice(0, 256))
     .setDescription(fill(customBody || config.body, member, role).slice(0, 3000));
+  const author = fill(config.parts.author, member, role).slice(0, 256);
+  const title = fill(config.parts.title, member, role).slice(0, 256);
+  if (author) embed.setAuthor({ name: author, iconURL });
+  if (title) embed.setTitle(title);
   for (const part of ['user', 'count', 'created']) {
     const value = config.parts[part];
     if (!value) continue;
@@ -213,8 +178,9 @@ function renderOnboarding(config, member, role, customBody) {
   return embed;
 }
 async function buildMemberOnboarding(guild, client, member, role) {
-  const [config, customBody] = await Promise.all([readConfig(guild, client, 'diskusi'), memberBody(guild, client, member.id)]);
-  const body = customBody || (role ? null : 'Halo {member}, member ini belum memilih role di {rules}.');
+  const [general, profile] = await Promise.all([readConfig(guild, client, 'diskusi'), memberProfile(guild, client, member.id)]);
+  const config = profile ? { body: profile.body, parts: { ...general.parts, ...(profile.parts || {}) } } : general;
+  const body = !profile && !role ? 'Halo {member}, member ini belum memilih role di {rules}.' : null;
   return { embeds: [renderOnboarding(config, member, role, body)], allowedMentions: { parse: [] } };
 }
 async function updateLastMemberWelcome(guild, client, member) {
@@ -251,7 +217,7 @@ async function updateLastMemberWelcome(guild, client, member) {
 async function announceJoin(member, client) {
   const key = `${member.guild.id}:${member.id}`;
   const work = (async () => {
-    const [channel, config] = await Promise.all([fetchNamedText(member.guild, 'announcements'), readConfig(member.guild, client, 'announcements')]);
+    const [channel, config] = await Promise.all([fetchNamedText(member.guild, 'diskusi'), readConfig(member.guild, client, 'announcements')]);
     await channel.send({ embeds: [renderOnboarding(config, member, '')], allowedMentions: { parse: [] } });
     await recordJoined(member, client);
   })();
@@ -297,4 +263,4 @@ async function welcomeAfterRole(member, client, role) {
     }
   } finally { completing.delete(key); }
 }
-module.exports = { SETTINGS_CHANNEL, welcomePanel, handleWelcomeInteraction, announceJoin, welcomeAfterRole, suppressSystemWelcome, buildMemberOnboarding, readDiskusiBody, updateLastMemberWelcome };
+module.exports = { SETTINGS_CHANNEL, welcomePanel, handleWelcomeInteraction, announceJoin, welcomeAfterRole, suppressSystemWelcome, buildMemberOnboarding, readDiskusiBody, readConfig, updateLastMemberWelcome };

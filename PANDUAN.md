@@ -1,74 +1,69 @@
 # Panduan bot komunitas
 
-## Isi dan pemasangan
-ZIP ini berisi seluruh berkas proyek, termasuk `index.js`, `role.js`, `role-lock.js`, `setup.js`, `community.js`, `channel-management.js`, `member-management.js`, `register-commands.js`, `welcome.js`, `package.json`, dan `package-lock.json`. Gunakan semua file pada folder proyek yang sama (jangan unggah hanya `index.js`). Tidak ada token atau folder `node_modules` di dalam ZIP.
+## Pemasangan dan pembaruan
 
-1. Cadangkan repository dan pengaturan permission server saat ini. Salin isi folder `bot-discord` ke root proyek/repository yang digunakan Render, lalu commit dan push. Jika menggunakan Root Directory, pastikan mengarah ke folder yang benar. Jalankan build `npm ci` (atau `npm install`) dan start `npm start`.
-2. Di environment Render atur `DISCORD_TOKEN` dan `GUILD_ID` yang benar. `WELCOME_CHANNEL_ID` tidak dipakai lagi: welcome dikirim khusus ke #announcements dan #diskusi. Jangan membagikan token. Aktifkan **Server Members Intent** di Discord Developer Portal.
-3. Siapkan tepat satu role bernama `Owner`, atau atur `OWNER_ROLE_ID` ke ID role yang benar jika namanya berbeda atau ada duplikat. Anggota yang akan menggunakan panel dan `/setup-komunitas` harus memiliki role tersebut, termasuk pemilik server. Bot memerlukan **Manage Server** (untuk mematikan sambutan sistem bawaan), **Manage Channels**, **Manage Roles**, **View Channels**, **Send Messages**, **Read Message History**, dan **Embed Links** (di kanal pengelola member, pengaturan welcome, announcements, dan diskusi); letakkan role bot di atas role status yang dikelola. Pastikan izin ini efektif di kanal terkait.
-4. Pastikan tepat satu kanal teks untuk masing-masing `#announcements` dan `#diskusi` tersedia. Untuk form feedback, siapkan tepat satu `#feedback-and-request`; bila tidak ada atau duplikat, channel pengelola tetap dibuat dan bot memberi peringatan bahwa form dilewati. Untuk fitur role lama, pastikan kanal `#rules-and-role` dan masing-masing satu role `Pekerja`, `Pelajar`, `Umum` tersedia. Panel role bisa dikirim dengan `/panel-role` di kanal rules.
-5. Setelah deploy dan slash command terdaftar, anggota ber-role Owner menjalankan **`/setup-komunitas`** di server yang `GUILD_ID`-nya sesuai. Jika command belum muncul, tunggu registrasi Discord atau coba restart. Perintah tidak menghapus channel, kategori, role, atau riwayat pesan. Jika terjadi error, periksa log dan izin bot lalu ulangi perintah. Jika feedback belum tersedia, kanal pengelola tetap dibuat; perbaiki feedback dan ulangi perintah untuk memasang form.
-6. Pengaturan akan membuat kategori `🔐 KELOLA KOMUNITAS` dengan `#kelola-kategori`, `#kelola-channel`, `#kelola-embed-welcome-member`, `#kelola-member`, dan `#terima-form`, lalu memasang panel form di `#feedback-and-request`. Menjalankan perintah lagi mengamankan ulang overwrite kategori pengelola, kelima kanal privat, dan kanal feedback dan memasang panel yang belum ditemukan. Riwayat lama feedback tetap ada.
+1. Cadangkan repository dan izin server. Salin **semua** file dari folder `bot-discord` ke root repository Render (termasuk `editor-template.js` dan `message-management.js`). Commit dan deploy. Build: `npm ci`; start: `npm start`. Jangan unggah `node_modules` atau token ke repository.
+2. Atur environment `DISCORD_TOKEN` dan **`GUILD_ID`** (ID server, bukan ID channel/aplikasi). `OWNER_ROLE_ID` opsional bila nama role bukan `Owner` atau terdapat duplikat. Aktifkan **Server Members Intent** di Discord Developer Portal. Jangan bagikan token.
+3. Bot memerlukan izin Manage Server (untuk mematikan welcome sistem), Manage Channels, Manage Roles, View Channels, Send Messages, Read Message History, Embed Links, dan izin efektif pada channel terkait. Posisi role bot harus di atas role status. Pastikan role `Pekerja`, `Pelajar`, dan `Umum`, serta satu `#rules-and-role` dan satu `#diskusi`, tersedia. Member baru perlu izin **View Channel** dan **Read Message History** di `#diskusi` agar melihat welcome sebelum memilih role; tidak perlu izin kirim pesan.
+4. Jalankan **`/setup-komunitas`** sebagai anggota yang benar-benar memiliki role Owner (atau role `OWNER_ROLE_ID`), termasuk bila Anda pemilik server. Perintah memasang/memperbarui panel dan menyiapkan kategori `🔐 KELOLA KOMUNITAS` dengan enam channel privat: `#kelola-kategori`, `#kelola-channel`, `#kelola-embed-welcome-member`, `#kelola-member`, `#edit-pesan-channel-awal`, dan `#terima-form`.
+5. Jika satu `#feedback-and-request` tersedia, perintah juga memasang panel formulir dan menata izinnya. Jika tidak ada atau duplikat, channel pengelola tetap dibuat dan peringatan ditampilkan.
 
-## Jika slash command tidak muncul
+**Penting:** `/setup-komunitas` mengganti seluruh permission overwrite kategori pengelola, keenam channel privat, dan `#feedback-and-request` bila ada. Overwrite khusus sebelumnya di lokasi tersebut akan terhapus. Periksa akses setelahnya. Pemilik server dan anggota berizin Administrator dapat melewati privasi Discord. Perintah ini tidak menghapus channel atau riwayat pesan.
 
-- Versi ini mendaftarkan `/setup-komunitas` dan `/onboarding-member` **langsung ke server pada `GUILD_ID`** saat bot menyala, agar lebih cepat dibanding command global. Gunakan ID server yang benar di environment Render, bukan ID channel atau aplikasi. Setelah deploy/restart, periksa log `[SLASH] /setup-komunitas siap untuk GUILD_ID ...` dan `[SLASH] /onboarding-member siap untuk GUILD_ID ...`. Jika muncul `[SLASH ERROR]`, baca pesan lengkapnya. Pada awal startup log `[CONFIG]` memperingatkan jika GUILD_ID belum diatur.
-- Pastikan aplikasi bot sudah terpasang pada server dengan cakupan **`bot`** dan **`applications.commands`**, serta pengguna memiliki izin **Use Application Commands** di channel tersebut. Periksa juga pengaturan Integrations untuk mengizinkan command bagi role/channel yang diperlukan. Discord mungkin perlu waktu singkat untuk menyegarkan daftar; coba buka kembali aplikasi dan ketik `/onboarding-member` di `#diskusi`.
-- Jika guild command sudah terpasang, bot menghapus hanya versi global lama dari dua command tersebut agar tidak ganda. Perintah aplikasi lain tidak dihapus. Jika registrasi server gagal, command global lama dipertahankan dan kesalahan ditulis di log.
-- Setelah `/setup-komunitas` berhasil, cari `#kelola-member` di kategori privat `🔐 KELOLA KOMUNITAS`. Perintah harus dijalankan oleh anggota yang benar-benar memiliki role **Owner** (atau role yang ID-nya di `OWNER_ROLE_ID`); pemilik server tanpa role itu perlu ditambahkan ke role tersebut. Pastikan bot memiliki Manage Channels, Manage Roles, View Channels, Send Messages, dan Read Message History. Periksa peringatan dalam balasan dan log bila sebagian pemasangan gagal. Administrator dan pemilik server dapat melewati privasi channel Discord.
-- Perintah `/onboarding-member` hanya bekerja di `#diskusi` server yang dikonfigurasi. Pemanggil harus memiliki salah satu role Pekerja/Pelajar/Umum atau Owner; isi onboarding yang muncul di channel bersifat publik.
+## Welcome dan onboarding di #diskusi
 
-## Izin dan privasi
-- `/setup-komunitas` **mengganti seluruh permission overwrite** kategori dan lima kanal privat tersebut, serta kanal `#feedback-and-request`, agar akses dan blokir chat bekerja. Overwrite khusus role/member yang pernah dibuat di lokasi itu akan dihapus. Konfigurasi akses lihat kanal feedback diatur agar anggota dapat melihatnya. Periksa hasilnya setelah pemasangan.
-- Kategori dan kelima kanal pengelola disembunyikan dari `@everyone` dan dibuka untuk role Owner serta bot. **Discord selalu mengizinkan pemilik server dan anggota dengan permission Administrator melewati batasan kanal**; oleh sebab itu privasi tidak dapat dijamin terhadap mereka. Jangan berikan Administrator kepada role lain jika mereka tidak boleh melihat hasil form. Periksa pengaturan role dan akses efektif dengan akun uji.
-- Anggota tanpa role status harus memilihnya dahulu untuk menggunakan form. Form memiliki judul dan isi; pengirim mendapat konfirmasi privat dan hasil dikirim ke `#terima-form` bersama nama dan ID Discord pengirim. Bot menolak pengiriman jika deteksi izin kanal inbox tidak aman. Jangan mengirim data rahasia bila akses server belum diverifikasi.
-- `#feedback-and-request` menjadi read-only untuk anggota biasa; tombol formulir tetap bisa dipakai. Administrator tetap dapat melewati blokir chat. Role/permission khusus yang ditambahkan kemudian dapat mengubah hasil ini, jadi periksa kembali setelah mengubah izin.
-- Bot tidak memberi role tambahan otomatis kepada anggota baru; `@everyone` adalah role bawaan Discord. Matikan auto-role dari bot/integrasi lain jika diperlukan. Discord tidak memberitahu bot tentang percobaan mengirim pesan yang ditolak izin; peringatan memilih role diberikan pada embed di #announcements. Bot tidak mengirim DM sambutan.
+Saat anggota baru masuk, bot mengirim **welcome member baru** di `#diskusi` yang mengarahkan mereka memilih role, tanpa DM dan tanpa memberikan role otomatis. Setelah anggota itu pertama kali memilih role di panel bot, bot mengirim **onboarding setelah role** yang berbeda, juga di `#diskusi`. Mengganti atau melepas role tidak mengirim ulang. Konfirmasi pemilihan role berupa respons privat, bukan DM.
 
-## Mengatur bagian onboarding
+Di `#kelola-embed-welcome-member` ada dua tombol:
+- **Edit welcome member baru**: pengaturan pesan saat anggota masuk. Pengaturan lama yang sebelumnya untuk announcements tetap dipakai, tetapi tujuan pesan baru sekarang `#diskusi`.
+- **Edit onboarding setelah role**: pengaturan pesan sesudah anggota memilih role.
 
-Di `#kelola-embed-welcome-member`, terdapat tombol **Isi announcements**, **Bagian announcements**, **Isi diskusi**, dan **Bagian diskusi**. Pengaturan tiap channel terpisah. Pada menu **Bagian**, Anda dapat mengubah atau menyembunyikan:
+Setiap tombol membuka **satu formulir** untuk author dan judul, isi, tiga bagian informasi, footer, serta waktu. Perubahan berlaku untuk pesan berikutnya dan tidak mengubah pesan lama secara massal.
 
-- Nama Pengguna, Anggota Ke, dan Akun Dibuat: ubah teks dengan format `Judul | Isi`. Contohnya `Profil | {tag}`. Kosongkan satu kolom untuk menyembunyikan bagian itu.
-- Footer/User ID: ubah teksnya atau kosongkan kolom footer untuk menyembunyikannya.
-- Waktu pesan: isi `YA` untuk menampilkan atau `TIDAK` untuk menyembunyikan timestamp Discord. Waktu otomatis itu tidak bisa diubah ke waktu lain dari menu ini; teks tanggal lain dapat ditulis pada footer.
+### Format formulir
+- **Header:** dua baris: author lalu judul. Tulis `-` pada baris yang ingin disembunyikan.
+- **Isi:** isi pesan, maksimal 3.000 karakter.
+- **Informasi:** tepat tiga baris, masing-masing `Judul | Isi`. Gunakan `-` pada baris yang tidak ingin ditampilkan. Contoh:
 
-Variabel yang didukung di isi dan bagian: `{member}`, `{username}`, `{tag}`, `{id}`, `{server}`, `{member_count}`, `{role}`, `{account_created}`, `{rules}`, `{diskusi}`, dan `{template}`. `{member_count}` adalah **jumlah anggota server saat embed dibuat**, bukan nomor urut bergabung yang permanen. Isi maksimal 3.000 karakter; hasil penggantian variabel dapat dipotong agar tidak melewati batas Discord. Judul dan avatar masih otomatis, tanpa banner. Pengaturan umum berlaku untuk pesan berikutnya; perubahan umum tidak mengubah semua pesan lama.
+```text
+Nama Pengguna | `{tag}`
+Anggota Ke | **#{member_count}**
+Akun Dibuat | {account_created}
+```
 
-## Kelola member dan slash command
+- **Footer:** baris pertama `YA` atau `TIDAK` untuk menampilkan/menyembunyikan waktu otomatis Discord; baris berikutnya isi footer. Kosongkan teks setelah baris pertama untuk menyembunyikan footer. Tampilan waktu seperti “Today at 4:13 PM” ditentukan oleh Discord dan tidak dapat diubah menjadi teks sembarang; matikan dengan `TIDAK` atau tambahkan teks waktu ke footer.
+- Variabel: `{member}`, `{username}`, `{tag}`, `{id}`, `{server}`, `{member_count}`, `{role}`, `{account_created}`, `{rules}`, `{diskusi}`, `{template}`. Jumlah anggota adalah jumlah server saat pesan dibuat, bukan nomor urut tetap. Avatar tetap otomatis; tidak ada pengaturan banner pada menu welcome.
 
-1. Di kanal privat `#kelola-member`, Owner tekan **Edit onboarding member**, pilih member, dan ubah isi khususnya. Isinya menggantikan isi umum **hanya untuk member tersebut**; bagian field/footer mengikuti pengaturan umum `#diskusi`. Jika belum ada isi khusus, bot menggunakan isi diskusi umum.
-2. Setelah disimpan, bot mencoba memperbarui **satu pesan onboarding terakhir member itu** di `#diskusi`. Pesan bot baru dilacak dari versi ini. Untuk pesan lama, bot hanya mencari hingga 1.000 pesan terakhir dan hanya mengubah pesan bot dengan `User ID` yang cocok di footer. Jika tidak ditemukan atau tidak bisa diedit, pengaturan tetap tersimpan; jalankan `/onboarding-member` untuk membuat pesan yang nantinya bisa diperbarui. Pesan lain tidak diubah secara massal.
-3. Di `#diskusi`, gunakan **`/onboarding-member`** dan pilih pilihan `member` yang ingin ditampilkan. Perintah mengirim embed publik berisi onboarding dan informasi member yang dipilih. Hanya pemanggil yang memiliki role status Pekerja/Pelajar/Umum atau role Owner dapat menggunakan perintah ini. Akun bot bukan target. Jika target belum punya role dan tidak ada isi khusus, bot memberi tahu bahwa target belum memilih role.
+Pengaturan disimpan di pesan bot dalam channel privat, bukan di filesystem Render. Jangan hapus pesan konfigurasi atau status dalam channel pengelola. Bot harus online ketika member bergabung dan memilih role; bila pengiriman/pencatatan gagal, periksa log. Belum ada antrean ulang otomatis; jalankan satu instance bot. Untuk sambutan Discord bawaan, bot mencoba mematikannya; bila gagal, periksa izin Manage Server dan pengaturan System Messages. Bot lain perlu diatur secara terpisah.
 
-**Penting:** Isi khusus dan informasi yang diaktifkan akan terlihat secara publik di `#diskusi` saat perintah dijalankan. Jangan masukkan data pribadi/rahasia. Kanal `#kelola-member` juga memuat pesan konfigurasi dan status onboarding yang dipakai bot; jangan hapus pesan-pesan tersebut. Anggota dengan Administrator dan pemilik server tetap dapat melihat kanal privat.
+## Kelola member
 
-## Alur welcome dan migrasi
+Di `#kelola-member`, klik **Edit onboarding member**, pilih member, lalu edit semua bagian pada satu formulir dengan format di atas. Pengaturan khusus hanya berlaku pada member tersebut, menggantikan template umum. Setelah disimpan bot mencoba mengedit **pesan onboarding terakhir** member di `#diskusi`; jika tidak ditemukan, pengaturan tetap tersimpan. Pesan baru dilacak secara privat. Untuk pesan lama bot mencari hingga 1.000 pesan terakhir dengan User ID yang cocok di footer; hasil bergantung pada format lama. Jalankan `/onboarding-member` untuk menerbitkan pesan baru yang dapat dilacak.
 
-Saat member baru bergabung, bot mengirim embed onboarding ke `#announcements` tanpa DM atau auto-role. Setelah member itu berhasil memilih role pertama melalui panel bot, bot mengirim onboarding ke `#diskusi`. Berpindah atau melepas role tidak mengirim ulang. Konfirmasi tombol role bersifat privat di Discord, bukan DM.
+Di `#diskusi`, gunakan `/onboarding-member` lalu pilih `member`. Pemanggil harus memiliki role Owner, Pekerja, Pelajar, atau Umum. Pesan hasilnya publik; jangan masukkan data rahasia. Member tanpa profil khusus menggunakan template umum. Akun bot tidak dapat dipilih.
 
-Mulai versi ini status join dicatat secara privat di `#kelola-member`, bukan di footer publik, sehingga footer dapat benar-benar disembunyikan. Status pada footer lama tetap didukung untuk anggota yang telah bergabung sebelum pembaruan. Bot harus online saat anggota bergabung dan memilih role; pastikan `/setup-komunitas` berhasil dan bot dapat menulis ke #kelola-member. Jika pengiriman atau pencatatan gagal, periksa log; tidak ada antrean retry otomatis. Gunakan satu instance bot; kegagalan menyimpan status setelah mengirim dapat mengakibatkan duplikasi saat percobaan ulang.
+## Edit pesan awal channel
 
-Isi onboarding versi sebelumnya dipertahankan. Pengaturan banner versi lama tetap tidak dipakai dan tidak dihapus. Pengaturan baru disimpan pada pesan bot di kanal privat, bukan filesystem sementara Render. Jangan hapus pesan konfigurasi. Bot mencoba mematikan notifikasi join sistem Discord saat startup dan saat `/setup-komunitas`; jika ada peringatan `[WELCOME SYSTEM]`, berikan Manage Server atau matikan notifikasi join sistem pada Server Settings → Overview/System Messages. Bot lain perlu diatur terpisah.
+Setelah `/setup-komunitas`, buka `#edit-pesan-channel-awal` dan klik **Pilih channel & pesan**. Pilih `#rules-and-role`, `#announcements`, `#berita`, atau channel teks/pengumuman dalam kategori bernama tepat `⚡ AINUN IJLAL STUDIO`, lalu pilih pesan bot yang ingin diubah. Editor menampilkan hingga **25 pesan embed bot terawal** dari 1.000 pesan awal channel. Pesan milik pengguna atau bot lain tidak dapat diedit oleh bot ini.
 
-## Cara mengelola kategori
-Di `#kelola-kategori`, tekan:
-- **Tambah kategori**: isi satu nama per baris, maksimal 25 per pengiriman.
-- **Edit kategori**: pilih hingga 25 kategori dari pemilih Discord, lalu ubah nama setelah `ID |` pada masing-masing baris. Jangan ubah atau hapus ID. Tekan submit untuk menerapkan.
-- **Hapus kategori**: pilih hingga 25 kategori, periksa daftar lengkap, kemudian konfirmasi. Menghapus kategori **tidak menghapus kanal di dalamnya**; kanal kehilangan kategorinya dan izin perlu diperiksa kembali. Kategori kelola komunitas dilindungi dari edit/hapus melalui panel.
+Formulir mengedit **pesan yang dipilih**, bukan membuat pesan baru: teks di luar embed, author, judul, isi embed pertama, field, footer, dan waktu. Untuk field, isi satu baris per field: `Judul | Isi | YA` (inline) atau `Judul | Isi | TIDAK` (tidak inline); gunakan `\n` untuk baris baru di isi field. Kosongkan daftar untuk menghapus semua field. Tombol interaktif seperti role/form, lampiran, gambar, warna, thumbnail, dan embed lainnya dipertahankan, tidak diedit. Pesan embed yang melebihi batas formulir ditolak tanpa perubahan. Jika pesan berubah saat formulir terbuka, pilih ulang agar tidak menimpa perubahan orang lain. Pengaturan tombol dan lampiran tidak berubah. Jika channel tidak masuk kriteria, ubah nama/kategori sesuai atau edit secara manual.
 
-Setiap operasi dijalankan satu per satu; hasil menampilkan jumlah berhasil dan gagal. Jika bot restart atau lebih dari 15 menit berlalu saat konfirmasi/edit, pilih ulang kategori. Jika ada beberapa instance bot, gunakan satu instance agar sesi interaksi tidak hilang.
+## Tombol Batal dan pengelolaan
 
-## Cara mengelola channel
+Pada pilihan dropdown di panel kategori, channel, member, dan editor pesan awal, tombol **Batal** menutup/menghapus pesan pilihan privat tanpa menerapkan perubahan. Konfirmasi hapus kategori/channel juga memiliki Batal. Modal bawaan Discord dapat ditutup tanpa menyimpan.
 
-Di `#kelola-channel`, tekan:
-- **Tambah channel**: pilih satu kategori, pilih jenis **teks** atau **suara**, lalu masukkan satu nama per baris (maksimal 25). Izin kategori disalin secara eksplisit saat channel dibuat. Sistem kunci role bot dapat mengubah overwrite `@everyone` pada channel baru; periksa akses efektifnya. Untuk membuka chat bagi role status di channel baru, atur izin sesuai kebutuhan tanpa membuka chat bagi anggota yang belum memilih role.
-- **Edit channel**: pilih hingga 25 channel dan ganti nama setelah `ID |` pada setiap baris. Jangan ubah atau hapus ID. Edit di panel ini hanya mengganti nama; untuk topik, kategori, dan izin gunakan pengaturan Discord.
-- **Hapus channel**: pilih hingga 25 channel, periksa daftar lengkap, lalu konfirmasi. **Penghapusan channel dan riwayatnya permanen**. Channel `#kelola-kategori`, `#kelola-channel`, `#kelola-embed-welcome-member`, `#kelola-member`, dan `#terima-form` di kategori privat dilindungi agar tidak dapat diubah namanya atau dihapus dari panel. Channel lain, termasuk channel role dan form, dapat dihapus jika dipilih—periksa dengan teliti.
+`#kelola-kategori`: tambah hingga 25 nama per formulir; pilih hingga 25 kategori untuk edit nama atau hapus dengan konfirmasi. Menghapus kategori tidak menghapus channel anak, tetapi dapat mengubah aksesnya; periksa izin. Kategori pengelola dilindungi.
 
-Pengelolaan mendukung edit/hapus channel teks, suara, announcement, stage, forum, dan media yang tersedia melalui pemilih Discord; thread tidak dikelola. Jika kategori yang diinginkan belum ada, buat dahulu lewat `#kelola-kategori`. Setelah perubahan, periksa hasil dan izin tiap channel; sebagian operasi dapat gagal bila izin bot tidak cukup atau Discord membatasi permintaan.
+`#kelola-channel`: buat hingga 25 channel teks/suara, atau pilih hingga 25 channel untuk edit nama/hapus. Izin kategori disalin saat pembuatan. **Hapus channel menghapus riwayat secara permanen** setelah konfirmasi. Keenam channel pengelola dilindungi. Periksa izin efektif channel baru, termasuk role status, karena kunci chat bot dan overwrite lain dapat memengaruhinya. Pilihan tersimpan sementara maksimal 15 menit dan hilang saat bot restart.
 
-## Perhatian
-Perintah lama **`/setup-server` bersifat merusak**: ia dapat menghapus/membuat ulang role, kanal beserta riwayat, dan aturan AutoMod. Jangan gunakan untuk memasang fitur baru pada server yang sudah digunakan; pakai `/setup-komunitas` saja. Jika tetap melakukan reset server, jalankan `/setup-komunitas` kembali setelahnya.
+## Jika command tidak muncul
 
-Pengujian lokal mencakup sintaks, validasi komponen Discord, dan simulasi izin, pemasangan, form, serta tambah/edit/hapus kategori dan channel, termasuk penyalinan izin kategori, pengaturan tampilan onboarding, kelola member, registrasi command per server, pembaruan pesan dan alur role pertama. Belum diuji langsung pada server Discord Anda. Uji dengan satu akun Owner dan satu akun anggota biasa sebelum digunakan luas.
+`/setup-komunitas` dan `/onboarding-member` didaftarkan langsung ke server pada `GUILD_ID` saat startup. Periksa log `[SLASH]` atau `[SLASH ERROR]`. Pastikan aplikasi diundang dengan cakupan `bot` dan `applications.commands`, pengguna memiliki Use Application Commands, dan pengaturan Integrations mengizinkan role/channel terkait. Buka ulang Discord bila perlu. Perintah global lain tetap dipertahankan. Bila registrasi server gagal, command global lama dipertahankan.
+
+## Batasan dan pengujian
+
+Discord tidak memberi bot informasi tentang upaya kirim pesan yang ditolak, jadi bot tidak dapat memperingatkan setiap percobaan tersebut; welcome meminta member memilih role. `@everyone` adalah role dasar Discord. Izin khusus, Administrator, atau bot auto-role lain dapat mengubah akses; periksa dengan akun uji.
+
+**Jangan gunakan `/setup-server` untuk memperbarui bot:** perintah lama itu dapat menghapus/membuat ulang channel, riwayat, role, dan aturan AutoMod. Gunakan `/setup-komunitas` saja.
+
+Pengujian proyek berupa simulasi lokal, bukan pengujian langsung di server Discord/Render Anda. Uji dahulu dengan satu akun Owner dan satu akun member biasa.

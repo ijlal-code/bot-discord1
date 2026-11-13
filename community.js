@@ -4,9 +4,10 @@ const {
   ChannelType, EmbedBuilder, MessageFlags, ModalBuilder, PermissionsBitField,
   TextInputBuilder, TextInputStyle,
 } = require('discord.js');
+const { CHANNEL: MESSAGE_CHANNEL, panel: messagePanel, handle: handleMessageEditor } = require('./message-management');
 const { STATUS_ROLES } = require('./role');
 const { channelManagePanel, handleChannelManagement } = require('./channel-management');
-const { SETTINGS_CHANNEL, welcomePanel, handleWelcomeInteraction, suppressSystemWelcome, readDiskusiBody, updateLastMemberWelcome } = require('./welcome');
+const { SETTINGS_CHANNEL, welcomePanel, handleWelcomeInteraction, suppressSystemWelcome, readConfig, updateLastMemberWelcome } = require('./welcome');
 const { MEMBER_CHANNEL, memberPanel, handleMemberInteraction } = require('./member-management');
 
 const CATEGORY = '🔐 KELOLA KOMUNITAS';
@@ -107,7 +108,7 @@ async function setupCommunity(guild, client) {
   else await category.permissionOverwrites.set(privatePerms, 'Amankan kategori kelola komunitas');
 
   const made = {};
-  for (const name of [MANAGE, MANAGE_CHANNEL, INBOX, SETTINGS_CHANNEL, MEMBER_CHANNEL]) {
+  for (const name of [MANAGE, MANAGE_CHANNEL, INBOX, SETTINGS_CHANNEL, MEMBER_CHANNEL, MESSAGE_CHANNEL]) {
     const matches = channels.filter(c => c && c.type === ChannelType.GuildText && c.parentId === category.id && c.name === name);
     if (matches.size > 1) throw new Error(`Kanal #${name} duplikat di kategori privat.`);
     let channel = matches.first();
@@ -116,6 +117,7 @@ async function setupCommunity(guild, client) {
     made[name] = channel;
   }
   // Panel kelola member dipasang bahkan ketika channel feedback belum tersedia.
+  await ensurePanel(made[MESSAGE_CHANNEL], client, 'community:initial-open', messagePanel(), true);
   await ensurePanel(made[MEMBER_CHANNEL], client, 'community:member-edit', memberPanel(), true);
   await ensurePanel(made[MANAGE], client, 'community:add', managePanel());
   await ensurePanel(made[MANAGE_CHANNEL], client, 'community:channel-add', channelManagePanel());
@@ -137,7 +139,7 @@ async function setupCommunity(guild, client) {
   let welcomeWarning = null;
   try { await suppressSystemWelcome(guild); }
   catch (error) { welcomeWarning = `Gagal menonaktifkan welcome sistem Discord: ${error.message}`; console.error('[WELCOME SYSTEM]', error.message); }
-  return { category, manage: made[MANAGE], manageChannels: made[MANAGE_CHANNEL], inbox: made[INBOX], welcome: made[SETTINGS_CHANNEL], member: made[MEMBER_CHANNEL], feedback, feedbackWarning, welcomeWarning };
+  return { category, manage: made[MANAGE], manageChannels: made[MANAGE_CHANNEL], inbox: made[INBOX], welcome: made[SETTINGS_CHANNEL], member: made[MEMBER_CHANNEL], messageEditor: made[MESSAGE_CHANNEL], feedback, feedbackWarning, welcomeWarning };
 }
 function safePrivateChannel(channel, guild, client, owner) {
   const overwrites = channel.permissionOverwrites.cache;
@@ -193,11 +195,16 @@ async function handleCommunityInteraction(i, client, guildId) {
     return true;
   }
   if (!isOwner(i)) { await sendError(i, '⛔ Hanya anggota dengan role Owner yang dapat menggunakan fitur ini.'); return true; }
+  if (i.isButton() && id === 'community:cancel-selection') { await i.deferUpdate(); await i.deleteReply(); return true; }
+  if (id.startsWith('community:initial-')) {
+    if (!i.channel || i.channel.name !== MESSAGE_CHANNEL || i.channel.parent?.name !== CATEGORY) { await sendError(i, '⛔ Gunakan panel di #edit-pesan-channel-awal.'); return true; }
+    await handleMessageEditor(i, client); return true;
+  }
   if (id.startsWith('community:member-')) {
     if (!i.channel || i.channel.name !== MEMBER_CHANNEL || i.channel.parent?.name !== CATEGORY) {
       await sendError(i, '⛔ Gunakan panel di #kelola-member.'); return true;
     }
-    await handleMemberInteraction(i, client, readDiskusiBody, updateLastMemberWelcome);
+    await handleMemberInteraction(i, client, readConfig, updateLastMemberWelcome);
     return true;
   }
   if (id.startsWith('community:welcome-')) {
@@ -221,7 +228,7 @@ async function handleCommunityInteraction(i, client, guildId) {
     await i.showModal(modal('community:add-submit', 'Tambah kategori', 'names', 'Satu nama kategori per baris (maks. 25)', undefined, 3000));
   } else if (i.isButton() && (id === 'community:edit' || id === 'community:delete')) {
     const action = id.endsWith('edit') ? 'edit' : 'delete';
-    await i.reply({ content: `Pilih maksimal 25 kategori untuk ${action === 'edit' ? 'diubah namanya' : 'dihapus'}. Kategori kelola komunitas dilindungi.`, components: [channelSelect(action)], flags: MessageFlags.Ephemeral });
+    await i.reply({ content: `Pilih maksimal 25 kategori untuk ${action === 'edit' ? 'diubah namanya' : 'dihapus'}. Kategori kelola komunitas dilindungi.`, components: [channelSelect(action), row(button('community:cancel-selection', 'Batal', ButtonStyle.Secondary))], flags: MessageFlags.Ephemeral });
   } else if (i.isChannelSelectMenu() && (id === 'community:select-edit' || id === 'community:select-delete')) {
     const categories = i.values.map(id => i.guild.channels.cache.get(id));
     if (!categories.length || categories.some(c => !c || c.type !== ChannelType.GuildCategory || c.id === i.channel.parentId)) {
@@ -265,7 +272,7 @@ async function handleCommunityInteraction(i, client, guildId) {
     await i.editReply({ content: `Selesai: ${ok} diubah, ${errors.length} gagal.${errors.length ? `\n${errors.join('\n').slice(0, 1400)}` : ''}`, allowedMentions: { parse: [] } });
   } else if (i.isButton() && id.startsWith('community:cancel:')) {
     take(id.split(':')[2], i, 'delete');
-    await i.update({ content: 'Penghapusan dibatalkan.', embeds: [], components: [] });
+    await i.deferUpdate(); await i.deleteReply();
   } else if (i.isButton() && id.startsWith('community:confirm-delete:')) {
     const data = take(id.split(':')[2], i, 'delete');
     if (!data) { await sendError(i, 'Pilihan kedaluwarsa atau sudah digunakan. Pilih kategori lagi.'); return true; }
