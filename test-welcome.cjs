@@ -1,40 +1,48 @@
 const assert = require('node:assert/strict');
-const { Collection, ChannelType, EmbedBuilder, SystemChannelFlagsBitField } = require('discord.js');
+const {Collection, ChannelType, EmbedBuilder, SystemChannelFlagsBitField} = require('discord.js');
 let welcome = require('./welcome');
 const client={user:{id:'100000000000000004'}};
 const channels=new Collection(); let seq=1000;
-const guild={id:'100000000000000001',name:'Komunitas Test',memberCount:25,systemChannelFlags:new SystemChannelFlagsBitField(0),
+const guild={id:'100000000000000001',name:'Ainun Ijlal Studio',memberCount:25,iconURL:()=>null,systemChannelFlags:new SystemChannelFlagsBitField(0),
   channels:{cache:channels,fetch:async()=>channels},async edit(data){this.systemChannelFlags=data.systemChannelFlags;this.editCount=(this.editCount||0)+1}};
 function makeChannel(id,name,type,parentId=null) {
   const list=[];
   const channel={id,name,type,parentId, get parent(){return channels.get(parentId)}, sent:list,
-    messages:{async fetch(opts){if(opts.message)return list.find(m=>m.id===opts.message);let all=[...list].reverse();if(opts.before){const n=all.findIndex(m=>m.id===opts.before); all=n<0?[]:all.slice(n+1)}; return new Collection(all.slice(0,opts.limit).map(m=>[m.id,m]));}},
-    async send(payload){for(const e of payload.embeds||[])e.toJSON(); const m={id:String(++seq),author:client.user,createdTimestamp:Date.now(),embeds:(payload.embeds||[]).map(e=>e.toJSON()),components:(payload.components||[]).map(r=>r.toJSON()),payload,
-      async edit(p){this.embeds=(p.embeds||[]).map(e=>e.toJSON());return this},async delete(){const idx=list.indexOf(this);if(idx>=0)list.splice(idx,1)}};list.push(m);return m;}};
+    messages:{async fetch(opts){let all=[...list].reverse();if(opts.before){const n=all.findIndex(m=>m.id===opts.before);all=n<0?[]:all.slice(n+1)};return new Collection(all.slice(0,opts.limit).map(m=>[m.id,m]));}},
+    async send(payload){for(const e of payload.embeds||[])e.toJSON();const m={id:String(++seq),author:client.user,createdTimestamp:Date.now(),embeds:(payload.embeds||[]).map(e=>e.toJSON()),components:(payload.components||[]).map(r=>r.toJSON()),payload,
+      async edit(p){this.embeds=(p.embeds||[]).map(e=>e.toJSON());return this}};list.push(m);return m;}};
   channels.set(id,channel);return channel;
 }
 const category=makeChannel('200','🔐 KELOLA KOMUNITAS',ChannelType.GuildCategory);
 const settings=makeChannel('201','kelola-embed-welcome-member',ChannelType.GuildText,category.id);
 const announcements=makeChannel('202','announcements',ChannelType.GuildText);
 const discussion=makeChannel('203','diskusi',ChannelType.GuildText);
-const member={id:'100000000000000999',user:{username:'Rina',bot:false},guild,joinedTimestamp:Date.now()};
-function form(target,fields) {return {customId:`community:welcome-save:${target}`,guild,channel:settings,user:{id:'555'},fields:{getTextInputValue:k=>fields[k]},isButton:()=>false,isModalSubmit:()=>true,async deferReply(){},async editReply(value){this.output=value}};}
+makeChannel('204','rules-and-role',ChannelType.GuildText);makeChannel('205','template-gratis',ChannelType.GuildText);
+const member={id:'100000000000000999',user:{username:'Rina',tag:'rina#0001',createdTimestamp:1700000000000,displayAvatarURL:()=> 'https://example.com/avatar.png'},guild,joinedTimestamp:Date.now()};
+function form(target,body) {return {customId:`community:welcome-save:${target}`,guildId:guild.id,guild,channel:settings,fields:{getTextInputValue:k=>k==='body'?body:undefined},isButton:()=>false,isModalSubmit:()=>true,async deferReply(){},async editReply(value){this.output=value}};}
 function edit(target) {return {customId:`community:welcome-edit:${target}`,guild,channel:settings,isButton:()=>true,isModalSubmit:()=>false,async showModal(modal){this.modal=modal.toJSON()}};}
 (async()=>{
- await welcome.suppressSystemWelcome(guild); await welcome.suppressSystemWelcome(guild); assert.equal(guild.editCount,1);assert(guild.systemChannelFlags.has(SystemChannelFlagsBitField.Flags.SuppressJoinNotifications));
- let a=edit('announcements'); await welcome.handleWelcomeInteraction(a,client);assert.equal(a.modal.components.length,5);
- let i=form('announcements',{title:'Halo {username}',body:'Bergabung di {server}: {member}',banner:'https://example.com/banner.png'});await welcome.handleWelcomeInteraction(i,client);assert.match(i.output,/disimpan/);
- i=form('diskusi',{title:'Role {role}',body:'Hai {member}, diskusi sekarang',banner:''});await welcome.handleWelcomeInteraction(i,client);
- i=form('diskusi',{title:'x',body:'y',banner:'http://contoh.com/a.png'});await welcome.handleWelcomeInteraction(i,client);assert.match(i.output,/HTTPS/);
- // Hilangkan cache Node module, lalu cek konfigurasi tetap berada di pesan Discord.
- delete require.cache[require.resolve('./welcome')]; welcome=require('./welcome');
- a=edit('announcements');await welcome.handleWelcomeInteraction(a,client);assert.equal(a.modal.components[0].components[0].value,'Halo {username}');
+ await welcome.suppressSystemWelcome(guild);await welcome.suppressSystemWelcome(guild);assert.equal(guild.editCount,1);
+ // Konfigurasi v1 sebelumnya tidak dihapus dan tidak dipakai otomatis sebagai template baru.
+ const legacy=await settings.send({embeds:[new EmbedBuilder().setTitle('Lama').setDescription('Isi lama bebas').setFooter({text:'welcome-config:v1:announcements'})]});
+ let a=edit('announcements');await welcome.handleWelcomeInteraction(a,client);assert.equal(a.modal.components.length,1);
+ const initial=a.modal.components[0].components[0].value;assert.match(initial,/Verifikasi Role Status/);assert.match(initial,/ainunijlal.com/);assert.doesNotMatch(initial,/Isi lama bebas/);
+ let d=edit('diskusi');await welcome.handleWelcomeInteraction(d,client);assert.match(d.modal.components[0].components[0].value,/telah memilih role/);
  await welcome.announceJoin(member,client);assert.equal(announcements.sent.length,1);assert.equal(discussion.sent.length,0);
- assert.equal(announcements.sent[0].embeds[0].title,'Halo Rina');assert.equal(announcements.sent[0].embeds[0].image.url,'https://example.com/banner.png');assert.equal(announcements.sent[0].payload.content,undefined);
- await welcome.welcomeAfterRole(member,client,'Pelajar');assert.equal(discussion.sent.length,1);assert.equal(discussion.sent[0].embeds[0].title,'Role Pelajar');assert.match(announcements.sent[0].embeds[0].footer.text,/:done$/);
- await welcome.welcomeAfterRole(member,client,'Pekerja');assert.equal(discussion.sent.length,1);
- const oldMember={...member,id:'100000000000000888'};await welcome.welcomeAfterRole(oldMember,client,'Umum');assert.equal(discussion.sent.length,1);
- i=form('announcements',{title:'Halo',body:'Pesan',banner:'',remove:'HAPUS'});await welcome.handleWelcomeInteraction(i,client);
- a=edit('announcements');await welcome.handleWelcomeInteraction(a,client);assert.equal(a.modal.components[2].components[0].value,undefined);
- console.log('LULUS: setting terpisah tersimpan, banner, validasi, welcome join, role pertama, deduplikasi dan flag sistem.');
+ const first=announcements.sent[0];assert.equal(first.payload.content,undefined);const e=first.embeds[0];
+ assert.equal(e.author.name,'AINUN IJLAL STUDIO • MEMBER ONBOARDING');assert.equal(e.title,'Selamat Datang, Rina');assert.equal(e.fields.length,3);assert.equal(e.thumbnail.url,'https://example.com/avatar.png');assert.equal(e.image,undefined);
+ assert.match(e.description,/<#204>/);assert.match(e.description,/<#203>/);assert.match(e.description,/<#205>/);assert.match(e.description,/pilih role/i);
+ await welcome.welcomeAfterRole(member,client,'Pelajar');assert.equal(discussion.sent.length,1);assert.equal(discussion.sent[0].embeds[0].title,e.title);assert.match(discussion.sent[0].embeds[0].description,/\*\*Pelajar\*\*/);assert.match(first.embeds[0].footer.text,/:done$/);
+ await welcome.welcomeAfterRole(member,client,'Umum');assert.equal(discussion.sent.length,1);
+ let i=form('announcements','Halo {member}, pilih role pada {rules}.');await welcome.handleWelcomeInteraction(i,client);assert.match(i.output,/disimpan/);
+ i=form('diskusi','Halo {username}, role {role} sudah aktif di {diskusi}.');await welcome.handleWelcomeInteraction(i,client);assert(settings.sent.includes(legacy));
+ // Isi tersimpan di pesan Discord dan bertahan setelah restart.
+ delete require.cache[require.resolve('./welcome')];welcome=require('./welcome');a=edit('announcements');await welcome.handleWelcomeInteraction(a,client);assert.equal(a.modal.components[0].components[0].value,'Halo {member}, pilih role pada {rules}.');
+ const member2={...member,id:'100000000000000998'};await welcome.announceJoin(member2,client);assert.match(announcements.sent.at(-1).embeds[0].description,/pilih role pada/);await welcome.welcomeAfterRole(member2,client,'Pekerja');assert.match(discussion.sent.at(-1).embeds[0].description,/role Pekerja sudah aktif/);
+ // Pending dari versi footer terdahulu tetap diproses setelah pembaruan.
+ const oldMember={...member,id:'100000000000000888'};await announcements.send({embeds:[new EmbedBuilder().setDescription('Legacy').setFooter({text:`welcome-member:v1:${oldMember.id}:${oldMember.joinedTimestamp}:pending`})]});
+ const n=discussion.sent.length;await welcome.welcomeAfterRole(oldMember,client,'Umum');assert.equal(discussion.sent.length,n+1);
+ i=form('diskusi','  ');await welcome.handleWelcomeInteraction(i,client);assert.match(i.output,/wajib/);
+ assert(!JSON.stringify(welcome.welcomePanel().components.map(c=>c.toJSON())).includes('upload'));
+ console.log('LULUS: format onboarding lama, isi terpisah, role, migrasi aman, tidak ada banner dan persistensi.');
 })().catch(e=>{console.error(e);process.exitCode=1});
