@@ -6,6 +6,7 @@ const {
 } = require('discord.js');
 const { STATUS_ROLES } = require('./role');
 const { channelManagePanel, handleChannelManagement } = require('./channel-management');
+const { SETTINGS_CHANNEL, welcomePanel, handleWelcomeInteraction, suppressSystemWelcome } = require('./welcome');
 
 const CATEGORY = '🔐 KELOLA KOMUNITAS';
 const MANAGE = 'kelola-kategori';
@@ -103,7 +104,7 @@ async function setupCommunity(guild, client) {
   else await category.permissionOverwrites.set(privatePerms, 'Amankan kategori kelola komunitas');
 
   const made = {};
-  for (const name of [MANAGE, MANAGE_CHANNEL, INBOX]) {
+  for (const name of [MANAGE, MANAGE_CHANNEL, INBOX, SETTINGS_CHANNEL]) {
     const matches = channels.filter(c => c && c.type === ChannelType.GuildText && c.parentId === category.id && c.name === name);
     if (matches.size > 1) throw new Error(`Kanal #${name} duplikat di kategori privat.`);
     let channel = matches.first();
@@ -120,8 +121,12 @@ async function setupCommunity(guild, client) {
   ], 'Jadikan feedback-and-request kanal formulir tanpa chat');
   await ensurePanel(made[MANAGE], client, 'community:add', managePanel());
   await ensurePanel(made[MANAGE_CHANNEL], client, 'community:channel-add', channelManagePanel());
+  await ensurePanel(made[SETTINGS_CHANNEL], client, 'community:welcome-edit:announcements', welcomePanel());
   await ensurePanel(feedback, client, 'community:feedback', feedbackPanel());
-  return { category, manage: made[MANAGE], manageChannels: made[MANAGE_CHANNEL], inbox: made[INBOX], feedback };
+  let welcomeWarning = null;
+  try { await suppressSystemWelcome(guild); }
+  catch (error) { welcomeWarning = `Gagal menonaktifkan welcome sistem Discord: ${error.message}`; console.error('[WELCOME SYSTEM]', error.message); }
+  return { category, manage: made[MANAGE], manageChannels: made[MANAGE_CHANNEL], inbox: made[INBOX], welcome: made[SETTINGS_CHANNEL], feedback, welcomeWarning };
 }
 function safePrivateChannel(channel, guild, client, owner) {
   const overwrites = channel.permissionOverwrites.cache;
@@ -177,6 +182,13 @@ async function handleCommunityInteraction(i, client, guildId) {
     return true;
   }
   if (!isOwner(i)) { await sendError(i, '⛔ Hanya anggota dengan role Owner yang dapat menggunakan fitur ini.'); return true; }
+  if (id.startsWith('community:welcome-')) {
+    if (!i.channel || i.channel.name !== SETTINGS_CHANNEL || i.channel.parent?.name !== CATEGORY) {
+      await sendError(i, '⛔ Gunakan panel di #kelola-embed-welcome-member.'); return true;
+    }
+    await handleWelcomeInteraction(i, client);
+    return true;
+  }
   if (id.startsWith('community:channel-')) {
     if (!i.channel || i.channel.name !== MANAGE_CHANNEL || i.channel.parent?.name !== CATEGORY) {
       await sendError(i, '⛔ Gunakan panel di #kelola-channel.'); return true;

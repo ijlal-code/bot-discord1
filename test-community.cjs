@@ -1,12 +1,12 @@
 const assert = require('node:assert/strict');
-const { Collection, ChannelType, PermissionsBitField } = require('discord.js');
+const { Collection, ChannelType, PermissionsBitField, SystemChannelFlagsBitField } = require('discord.js');
 const {setupCommunity,handleCommunityInteraction} = require('./community');
 let seq=100000000000000001n;
 const channels=new Collection();
 const owner={id:'100000000000000002',name:'Owner'}, worker={id:'100000000000000003',name:'Pekerja'};
 const roles=new Collection([[owner.id,owner],[worker.id,worker]]);
 const client={user:{id:'100000000000000004'}};
-const guild={id:'100000000000000001',roles:{cache:roles,fetch:async()=>roles},channels:{cache:channels,fetch:async id=>id?channels.get(id):channels}};
+const guild={id:'100000000000000001',systemChannelFlags:new SystemChannelFlagsBitField(0),async edit(o){this.systemChannelFlags=o.systemChannelFlags},roles:{cache:roles,fetch:async()=>roles},channels:{cache:channels,fetch:async id=>id?channels.get(id):channels}};
 function channel(name,type=0,parentId=null,overwrites=[]) {
  const id=String(seq++ + 100n);
  const c={id,name,type,parentId,get parent(){return channels.get(this.parentId)},permissionOverwrites:{cache:new Collection(),async set(perms){setPerms(c,perms)}},messages:{cache:new Collection(), async fetch(){return this.cache}},sent:[],async send(payload){for(const e of payload.embeds||[])e.toJSON();for(const r of payload.components||[])r.toJSON();this.sent.push(payload);const m={author:{id:client.user.id},components:(payload.components||[]).map(x=>({components:x.toJSON().components.map(c=>({customId:c.custom_id}))}))};this.messages.cache.set(String(this.sent.length),m);return m;},async setName(n){this.name=n},async delete(){channels.delete(this.id)}};
@@ -54,7 +54,7 @@ function interaction(id,{channel:ch,memberRoles=[owner],type='button',values=[],
  i=interaction('community:channel-select-delete',{channel:managed,type:'select',values:[c1.id,c2.id]}); await handleCommunityInteraction(i,client,guild.id); let confirmChannel=i.output.components[0].toJSON().components[0].custom_id; assert.match(i.output.content,/permanen/); assert.match(i.output.embeds[0].toJSON().description,/kedua/);
  i=interaction(confirmChannel,{channel:managed}); i.user.id='100000000000000099'; await handleCommunityInteraction(i,client,guild.id); assert.match(i.output.content,/kedaluwarsa/); assert(channels.has(c1.id));
  i=interaction(confirmChannel,{channel:managed}); await handleCommunityInteraction(i,client,guild.id); assert(!channels.has(c1.id) && !channels.has(c2.id));
- for (const protectedCh of [installed.manage,installed.manageChannels,installed.inbox]) {
+ for (const protectedCh of [installed.manage,installed.manageChannels,installed.inbox,installed.welcome]) {
    i=interaction('community:channel-select-delete',{channel:managed,type:'select',values:[protectedCh.id]}); await handleCommunityInteraction(i,client,guild.id); assert.match(i.output.content,/dilindungi/);
  }
  i=interaction('community:channel-create-category',{channel:managed,type:'select',values:[category.id]}); await handleCommunityInteraction(i,client,guild.id); typeButton=i.output.components[0].toJSON().components[1].custom_id;

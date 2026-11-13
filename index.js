@@ -2,7 +2,6 @@ const http = require('http');
 const {
   Client,
   GatewayIntentBits,
-  EmbedBuilder,
   ActivityType,
   PermissionsBitField,
   MessageFlags,
@@ -12,9 +11,10 @@ const {
 } = require('discord.js');
 
 const { buildRulesAndRolePanel, handleRoleButtonInteraction } = require('./role');
-const { SOCIAL_LINKS_BLOCK, runFullServerSetup } = require('./setup');
+const { runFullServerSetup } = require('./setup');
 const { applyRoleLock, lockNewChannel } = require('./role-lock');
 const { setupCommunity, handleCommunityInteraction, isOwner, sendError } = require('./community');
+const { announceJoin, welcomeAfterRole, suppressSystemWelcome } = require('./welcome');
 
 // =========================================================================
 // 1. SERVER HTTP MINI (HEALTH-CHECK RENDER 24 JAM)
@@ -41,7 +41,6 @@ server.listen(PORT, () => {
 // =========================================================================
 const TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID || '1569980330629275819';
-const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID;
 
 if (!TOKEN) {
   console.error('[ERROR] Variabel DISCORD_TOKEN belum diatur pada Environment Render.');
@@ -111,6 +110,9 @@ client.once('clientReady', async () => {
     return;
   }
 
+  try { await suppressSystemWelcome(targetGuild); }
+  catch (err) { console.warn('[WELCOME SYSTEM] Gagal mematikan pesan join bawaan Discord:', err.message); }
+
   try {
     // Wajib fetch() langsung ke API Discord agar daftar channel akurat 100%
     const channels = await targetGuild.channels.fetch();
@@ -170,68 +172,12 @@ client.once('clientReady', async () => {
 // 4. EVENT SAMBUTAN MEMBER BARU (TANPA AUTO ROLE)
 // =========================================================================
 client.on('guildMemberAdd', async (member) => {
+  if (member.guild.id !== GUILD_ID || member.user.bot) return;
   try {
-    // Member baru tidak diberi role otomatis. @everyone adalah role bawaan Discord.
-    if (member.guild.id !== GUILD_ID || member.user.bot) return;
-
-    // 2. Cari kanal welcome (WELCOME_CHANNEL_ID -> #announcements -> systemChannel)
-    const channels = await member.guild.channels.fetch().catch(() => member.guild.channels.cache);
-    const welcomeChannel =
-      (WELCOME_CHANNEL_ID && channels.get(WELCOME_CHANNEL_ID)) ||
-      channels.find((ch) => ch && ch.name === 'announcements' && ch.isTextBased()) ||
-      member.guild.systemChannel;
-
-    const rulesCh = channels.find((ch) => ch && ch.name === 'rules-and-role');
-    const diskusiCh = channels.find((ch) => ch && ch.name === 'diskusi');
-    const templateCh = channels.find((ch) => ch && ch.name === 'template-gratis');
-
-    // Discord tidak mengirim event percobaan pesan yang ditolak oleh izin channel.
-    // Karena itu, peringatan dikirim saat bergabung (DM bisa dinonaktifkan pengguna).
-    await member.send(
-      `Selamat datang di **${member.guild.name}**! Harap pilih role Pekerja, Pelajar, atau Umum di ${rulesCh ? `${rulesCh}` : '#rules-and-role'} terlebih dahulu agar dapat mengirim pesan.`
-    ).catch((err) => console.warn(`[WELCOME DM] Gagal mengirim DM kepada ${member.id}: ${err.message}`));
-    if (!welcomeChannel || !welcomeChannel.isTextBased() || !welcomeChannel.send) return;
-
-    const welcomeEmbed = new EmbedBuilder()
-      .setColor(0x0F172A)
-      .setAuthor({
-        name: 'AINUN IJLAL STUDIO • MEMBER ONBOARDING',
-        iconURL: member.guild.iconURL({ dynamic: true }) || undefined,
-      })
-      .setTitle(`Selamat Datang, ${member.user.username}`)
-      .setDescription(
-        `Halo ${member}, terima kasih telah bergabung di komunitas resmi **Ainun Ijlal Studio**.\n\n` +
-        '**Panduan Memulai:**\n' +
-        `• **Verifikasi Role Status:** Pilih role status Anda pada ${rulesCh ? `${rulesCh}` : '`#rules-and-role`'} untuk membuka akses kirim pesan.\n` +
-        `• **Diskusi Teknis:** Ajukan pertanyaan pemrograman dan desain pada ${diskusiCh ? `${diskusiCh}` : '`#diskusi`'}.\n` +
-        `• **Aset & Resource:** Akses starter template gratis pada ${templateCh ? `${templateCh}` : '`#template-gratis`'}.\n\n` +
-        '**Portofolio & Kanal Resmi:**\n' +
-        '• Website: https://ainunijlal.com/\n' +
-        '• Studio: https://studio.ainunijlal.com/\n' +
-        SOCIAL_LINKS_BLOCK
-      )
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
-      .addFields(
-        { name: 'Nama Pengguna', value: `\`${member.user.tag}\``, inline: true },
-        { name: 'Anggota Ke', value: `**#${member.guild.memberCount}**`, inline: true },
-        {
-          name: 'Akun Dibuat',
-          value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:D>`,
-          inline: true,
-        }
-      )
-      .setFooter({
-        text: `Ainun Ijlal Studio Community • User ID: ${member.id}`,
-        iconURL: member.guild.iconURL({ dynamic: true }) || undefined,
-      })
-      .setTimestamp();
-
-    await welcomeChannel.send({
-      content: `Selamat datang di komunitas, ${member}.`,
-      embeds: [welcomeEmbed],
-    });
+    // Tidak ada DM atau auto-role. Hanya embed ke #announcements saat bergabung.
+    await announceJoin(member, client);
   } catch (error) {
-    console.error('[WELCOME ERROR]', error);
+    console.error('[WELCOME ANNOUNCEMENTS ERROR]', error);
   }
 });
 
@@ -252,7 +198,9 @@ client.on('interactionCreate', async (interaction) => {
 
   // 1. Tangani tombol pemilihan role di role.js
   if (interaction.isButton()) {
-    await handleRoleButtonInteraction(interaction);
+    await handleRoleButtonInteraction(interaction, async (member, role) => {
+      if (member.guild.id === GUILD_ID && !member.user.bot) await welcomeAfterRole(member, client, role);
+    });
     return;
   }
 
@@ -268,7 +216,7 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       const result = await setupCommunity(interaction.guild, client);
-      await interaction.editReply({ content: `✅ Siap: ${result.manage}, ${result.manageChannels}, dan ${result.inbox} privat; formulir tersedia di ${result.feedback}.`, allowedMentions: { parse: [] } });
+      await interaction.editReply({ content: `✅ Siap: ${result.manage}, ${result.manageChannels}, ${result.welcome}, dan ${result.inbox} privat; formulir tersedia di ${result.feedback}.${result.welcomeWarning ? ` ⚠️ ${result.welcomeWarning}` : ''}`, allowedMentions: { parse: [] } });
     } catch (error) {
       console.error('[SETUP KOMUNITAS ERROR]', error);
       await interaction.editReply({ content: `❌ Setup belum selesai: ${error.message}. Periksa izin bot lalu jalankan ulang /setup-komunitas.` });

@@ -51,7 +51,7 @@ function buildRulesAndRolePanel(guild) {
   return { embeds: [embed], components: [rowStatus] };
 }
 
-async function handleRoleButtonInteraction(interaction) {
+async function handleRoleButtonInteraction(interaction, onFirstRole) {
   const { customId, member, guild } = interaction;
   if (!customId.startsWith('select_role:')) return false;
 
@@ -116,6 +116,11 @@ async function handleRoleButtonInteraction(interaction) {
       await interaction.editReply({
         content: `Role **${selectedRoleName}** berhasil ditetapkan. Sekarang Anda sudah dapat mengirim pesan di kanal diskusi.`,
       });
+    }
+    if (!replacedRoleName && onFirstRole) {
+      // Kegagalan welcome tidak membatalkan pemberian role yang sudah berhasil.
+      try { await onFirstRole(member, selectedRoleName); }
+      catch (error) { console.error('[WELCOME DISKUSI ERROR]', error); }
     }
   } catch (error) {
     console.error('[ROLE SELECTION ERROR]', error);
