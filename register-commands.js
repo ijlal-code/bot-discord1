@@ -38,7 +38,7 @@ async function registerCommands(rest, applicationId, guildId) {
         if (previous) await rest.patch(Routes.applicationGuildCommand(applicationId, guildId, previous.id), { body: definition });
         else await rest.post(guildRoute, { body: definition });
         result.guildSucceeded.push(definition.name);
-        console.log(`[SLASH] /${definition.name} siap untuk GUILD_ID ${guildId}.`);
+        console.log(`[SLASH] /${definition.name} siap untuk server WELCOME_CHANNEL_ID ${guildId}.`);
       } catch (error) {
         result.errors.push(`/${definition.name}: ${error.message}`);
         console.error(`[SLASH ERROR] Gagal mendaftarkan /${definition.name} pada server ${guildId}: ${error.message}`);
@@ -46,7 +46,7 @@ async function registerCommands(rest, applicationId, guildId) {
     }
   } catch (error) {
     result.errors.push(`Guild: ${error.message}`);
-    console.error(`[SLASH ERROR] Gagal membaca command untuk GUILD_ID ${guildId}: ${error.message}`);
+    console.error(`[SLASH ERROR] Gagal membaca command untuk server WELCOME_CHANNEL_ID ${guildId}: ${error.message}`);
   }
 
   // Pertahankan perintah global lama tanpa menghapus perintah lain yang mungkin ada.

@@ -40,14 +40,19 @@ server.listen(PORT, () => {
 // =========================================================================
 // 2. KONFIGURASI ENVIRONMENT & CLIENT
 // =========================================================================
+// WELCOME_CHANNEL_ID dipakai sebagai ID SERVER sesuai konfigurasi Render pengguna.
 const TOKEN = process.env.DISCORD_TOKEN;
-const GUILD_ID = process.env.GUILD_ID;
-if (!TOKEN || !GUILD_ID) {
-  console.error('[CONFIG ERROR] DISCORD_TOKEN dan GUILD_ID wajib diatur lewat environment Render.');
+const GUILD_ID = process.env.WELCOME_CHANNEL_ID?.trim();
+if (!TOKEN) {
+  console.error('[CONFIG ERROR] DISCORD_TOKEN belum diatur di environment Render.');
+  process.exit(1);
+}
+if (!GUILD_ID) {
+  console.error('[CONFIG ERROR] WELCOME_CHANNEL_ID belum diatur di environment Render; isinya harus ID server Discord.');
   process.exit(1);
 }
 if (!/^\d{15,22}$/.test(GUILD_ID)) {
-  console.error('[CONFIG ERROR] GUILD_ID harus berupa ID server Discord yang valid.');
+  console.error('[CONFIG ERROR] WELCOME_CHANNEL_ID harus berisi ID server Discord yang valid, bukan ID channel.');
   process.exit(1);
 }
 
@@ -71,7 +76,7 @@ client.once('clientReady', async () => {
   client.user.setActivity('Ainun Ijlal Studio', { type: ActivityType.Watching });
 
   // /setup-komunitas dan /onboarding-member didaftarkan sebagai guild command
-  // agar muncul lebih cepat pada server yang ditentukan oleh GUILD_ID.
+  // agar muncul lebih cepat pada server yang ditentukan oleh WELCOME_CHANNEL_ID.
   try {
     const rest = new REST({ version: '10' }).setToken(TOKEN);
     const registration = await registerCommands(rest, client.user.id, GUILD_ID);
@@ -90,7 +95,7 @@ client.once('clientReady', async () => {
   }
 
   if (!targetGuild) {
-    console.warn('[INIT] Server target tidak ditemukan. Melewati pengecekan otomatis demi keamanan data.');
+    console.warn('[INIT] Server target tidak ditemukan. Pastikan WELCOME_CHANNEL_ID berisi ID server (bukan ID channel), dan bot sudah diundang ke server tersebut.');
     return;
   }
 
@@ -193,7 +198,7 @@ client.on('interactionCreate', async (interaction) => {
   // Panel ini hanya bisa dipasang anggota role Owner, termasuk jika bukan Administrator.
   if (interaction.commandName === 'setup-komunitas') {
     if (!interaction.guild || interaction.guildId !== GUILD_ID || !isOwner(interaction)) {
-      await interaction.reply({ content: '⛔ Gunakan pada server GUILD_ID yang benar dengan role Owner (atau role pada OWNER_ROLE_ID). Pemilik server tetap harus memiliki role tersebut.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: '⛔ Gunakan pada server WELCOME_CHANNEL_ID yang benar dengan role Owner (atau role pada OWNER_ROLE_ID). Pemilik server tetap harus memiliki role tersebut.', flags: MessageFlags.Ephemeral });
       return;
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -255,7 +260,7 @@ client.on('interactionCreate', async (interaction) => {
 
   if (interaction.commandName === 'kunci-chat') {
     if (interaction.guildId !== GUILD_ID) {
-      await interaction.reply({ content: 'Perintah ini hanya tersedia pada server GUILD_ID yang dikonfigurasi.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: 'Perintah ini hanya tersedia pada server WELCOME_CHANNEL_ID yang dikonfigurasi.', flags: MessageFlags.Ephemeral });
       return;
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
