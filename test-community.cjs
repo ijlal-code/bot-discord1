@@ -54,7 +54,7 @@ function interaction(id,{channel:ch,memberRoles=[owner],type='button',values=[],
  i=interaction('community:channel-select-delete',{channel:managed,type:'select',values:[c1.id,c2.id]}); await handleCommunityInteraction(i,client,guild.id); let confirmChannel=i.output.components[0].toJSON().components[0].custom_id; assert.match(i.output.content,/permanen/); assert.match(i.output.embeds[0].toJSON().description,/kedua/);
  i=interaction(confirmChannel,{channel:managed}); i.user.id='100000000000000099'; await handleCommunityInteraction(i,client,guild.id); assert.match(i.output.content,/kedaluwarsa/); assert(channels.has(c1.id));
  i=interaction(confirmChannel,{channel:managed}); await handleCommunityInteraction(i,client,guild.id); assert(!channels.has(c1.id) && !channels.has(c2.id));
- for (const protectedCh of [installed.manage,installed.manageChannels,installed.inbox,installed.welcome]) {
+ for (const protectedCh of [installed.manage,installed.manageChannels,installed.inbox,installed.welcome,installed.member]) {
    i=interaction('community:channel-select-delete',{channel:managed,type:'select',values:[protectedCh.id]}); await handleCommunityInteraction(i,client,guild.id); assert.match(i.output.content,/dilindungi/);
  }
  i=interaction('community:channel-create-category',{channel:managed,type:'select',values:[category.id]}); await handleCommunityInteraction(i,client,guild.id); typeButton=i.output.components[0].toJSON().components[1].custom_id;

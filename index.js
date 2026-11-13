@@ -10,11 +10,12 @@ const {
   SlashCommandBuilder,
 } = require('discord.js');
 
-const { buildRulesAndRolePanel, handleRoleButtonInteraction } = require('./role');
+const { STATUS_ROLES, buildRulesAndRolePanel, handleRoleButtonInteraction } = require('./role');
 const { runFullServerSetup } = require('./setup');
 const { applyRoleLock, lockNewChannel } = require('./role-lock');
 const { setupCommunity, handleCommunityInteraction, isOwner, sendError } = require('./community');
-const { announceJoin, welcomeAfterRole, suppressSystemWelcome } = require('./welcome');
+const { announceJoin, welcomeAfterRole, suppressSystemWelcome, buildMemberOnboarding } = require('./welcome');
+const { handleMemberCommand } = require('./member-management');
 
 // =========================================================================
 // 1. SERVER HTTP MINI (HEALTH-CHECK RENDER 24 JAM)
@@ -71,6 +72,12 @@ client.once('clientReady', async () => {
         .setName('setup-server')
         .setDescription('Reset & bangun ulang seluruh kategori, channel, role, dan AutoMod server')
         .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+        .toJSON(),
+      new SlashCommandBuilder()
+        .setName('onboarding-member')
+        .setDescription('Tampilkan onboarding untuk satu member di #diskusi')
+        .addUserOption(option => option.setName('member').setDescription('Member yang ingin ditampilkan').setRequired(true))
+        .setDMPermission(false)
         .toJSON(),
       new SlashCommandBuilder()
         .setName('setup-komunitas')
@@ -207,6 +214,11 @@ client.on('interactionCreate', async (interaction) => {
   // 2. Tangani Slash Command
   if (!interaction.isChatInputCommand()) return;
 
+  if (interaction.commandName === 'onboarding-member') {
+    await handleMemberCommand(interaction, client, GUILD_ID, { isOwner, statusRoles: STATUS_ROLES, buildMemberOnboarding });
+    return;
+  }
+
   // Panel ini hanya bisa dipasang anggota role Owner, termasuk jika bukan Administrator.
   if (interaction.commandName === 'setup-komunitas') {
     if (!interaction.guild || interaction.guildId !== GUILD_ID || !isOwner(interaction)) {
@@ -216,7 +228,7 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       const result = await setupCommunity(interaction.guild, client);
-      await interaction.editReply({ content: `✅ Siap: ${result.manage}, ${result.manageChannels}, ${result.welcome}, dan ${result.inbox} privat; formulir tersedia di ${result.feedback}.${result.welcomeWarning ? ` ⚠️ ${result.welcomeWarning}` : ''}`, allowedMentions: { parse: [] } });
+      await interaction.editReply({ content: `✅ Siap: ${result.manage}, ${result.manageChannels}, ${result.welcome}, ${result.member}, dan ${result.inbox} privat; formulir tersedia di ${result.feedback}.${result.welcomeWarning ? ` ⚠️ ${result.welcomeWarning}` : ''}`, allowedMentions: { parse: [] } });
     } catch (error) {
       console.error('[SETUP KOMUNITAS ERROR]', error);
       await interaction.editReply({ content: `❌ Setup belum selesai: ${error.message}. Periksa izin bot lalu jalankan ulang /setup-komunitas.` });
