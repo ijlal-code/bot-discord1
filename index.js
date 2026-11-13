@@ -6,8 +6,6 @@ const {
   PermissionsBitField,
   MessageFlags,
   REST,
-  Routes,
-  SlashCommandBuilder,
 } = require('discord.js');
 
 const { STATUS_ROLES, buildRulesAndRolePanel, handleRoleButtonInteraction } = require('./role');
@@ -16,6 +14,7 @@ const { applyRoleLock, lockNewChannel } = require('./role-lock');
 const { setupCommunity, handleCommunityInteraction, isOwner, sendError } = require('./community');
 const { announceJoin, welcomeAfterRole, suppressSystemWelcome, buildMemberOnboarding } = require('./welcome');
 const { handleMemberCommand } = require('./member-management');
+const { registerCommands } = require('./register-commands');
 
 // =========================================================================
 // 1. SERVER HTTP MINI (HEALTH-CHECK RENDER 24 JAM)
@@ -42,6 +41,7 @@ server.listen(PORT, () => {
 // =========================================================================
 const TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID || '1569980330629275819';
+if (!process.env.GUILD_ID) console.warn(`[CONFIG] GUILD_ID belum diatur; menggunakan ID lama ${GUILD_ID}. Pastikan ini ID server yang benar.`);
 
 if (!TOKEN) {
   console.error('[ERROR] Variabel DISCORD_TOKEN belum diatur pada Environment Render.');
@@ -65,42 +65,14 @@ client.once('clientReady', async () => {
   console.log(`[DISCORD] Bot aktif sebagai ${client.user.tag}`);
   client.user.setActivity('Ainun Ijlal Studio', { type: ActivityType.Watching });
 
-  // Registrasi Slash Commands (/setup-server & /panel-role) khusus Administrator
+  // /setup-komunitas dan /onboarding-member didaftarkan sebagai guild command
+  // agar muncul lebih cepat pada server yang ditentukan oleh GUILD_ID.
   try {
-    const commands = [
-      new SlashCommandBuilder()
-        .setName('setup-server')
-        .setDescription('Reset & bangun ulang seluruh kategori, channel, role, dan AutoMod server')
-        .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-        .toJSON(),
-      new SlashCommandBuilder()
-        .setName('onboarding-member')
-        .setDescription('Tampilkan onboarding untuk satu member di #diskusi')
-        .addUserOption(option => option.setName('member').setDescription('Member yang ingin ditampilkan').setRequired(true))
-        .setDMPermission(false)
-        .toJSON(),
-      new SlashCommandBuilder()
-        .setName('setup-komunitas')
-        .setDescription('Siapkan panel privat Owner dan formulir feedback tanpa reset server')
-        .setDMPermission(false)
-        .toJSON(),
-      new SlashCommandBuilder()
-        .setName('kunci-chat')
-        .setDescription('Terapkan izin wajib pilih role tanpa mereset server')
-        .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-        .toJSON(),
-      new SlashCommandBuilder()
-        .setName('panel-role')
-        .setDescription('Kirim ulang panel peraturan & tombol pilihan role pada kanal ini')
-        .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-        .toJSON(),
-    ];
-
     const rest = new REST({ version: '10' }).setToken(TOKEN);
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log('[SLASH] Perintah /setup-server dan /panel-role berhasil terdaftar.');
+    const registration = await registerCommands(rest, client.user.id, GUILD_ID);
+    if (registration.errors.length) console.warn(`[SLASH] ${registration.errors.length} masalah registrasi; periksa [SLASH ERROR] di log.`);
   } catch (err) {
-    console.error('[SLASH ERROR]', err.message);
+    console.error('[SLASH ERROR] Registrasi slash command gagal:', err.message);
   }
 
   // Ambil data server langsung dari API Discord (bukan cache lokal)
@@ -222,13 +194,14 @@ client.on('interactionCreate', async (interaction) => {
   // Panel ini hanya bisa dipasang anggota role Owner, termasuk jika bukan Administrator.
   if (interaction.commandName === 'setup-komunitas') {
     if (!interaction.guild || interaction.guildId !== GUILD_ID || !isOwner(interaction)) {
-      await interaction.reply({ content: '⛔ Hanya role Owner pada server yang dikonfigurasi dapat menjalankan perintah ini.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: '⛔ Gunakan pada server GUILD_ID yang benar dengan role Owner (atau role pada OWNER_ROLE_ID). Pemilik server tetap harus memiliki role tersebut.', flags: MessageFlags.Ephemeral });
       return;
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       const result = await setupCommunity(interaction.guild, client);
-      await interaction.editReply({ content: `✅ Siap: ${result.manage}, ${result.manageChannels}, ${result.welcome}, ${result.member}, dan ${result.inbox} privat; formulir tersedia di ${result.feedback}.${result.welcomeWarning ? ` ⚠️ ${result.welcomeWarning}` : ''}`, allowedMentions: { parse: [] } });
+      const feedbackText = result.feedbackWarning ? `⚠️ ${result.feedbackWarning}` : `Formulir tersedia di ${result.feedback}.`;
+      await interaction.editReply({ content: `✅ Kanal privat siap: ${result.manage}, ${result.manageChannels}, ${result.welcome}, ${result.member}, dan ${result.inbox}. ${feedbackText}${result.welcomeWarning ? ` ⚠️ ${result.welcomeWarning}` : ''}`, allowedMentions: { parse: [] } });
     } catch (error) {
       console.error('[SETUP KOMUNITAS ERROR]', error);
       await interaction.editReply({ content: `❌ Setup belum selesai: ${error.message}. Periksa izin bot lalu jalankan ulang /setup-komunitas.` });

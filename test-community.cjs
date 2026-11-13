@@ -20,7 +20,7 @@ function interaction(id,{channel:ch,memberRoles=[owner],type='button',values=[],
  return {customId:id,guild,guildId:guild.id,channel:ch,user:{id:'100000000000000005',tag:'test#0001'},member:{roles:{cache:new Collection(memberRoles.map(x=>[x.id,x]))}},values, fields:{getTextInputValue:k=>fields[k]},isButton:()=>type==='button',isModalSubmit:()=>type==='modal',isChannelSelectMenu:()=>type==='select',async reply(p){this.replied=true;this.output=p;messages.push(p)},async update(p){this.replied=true;this.output=p;messages.push(p)},async deferReply(){this.deferred=true},async deferUpdate(){this.deferred=true},async editReply(p){this.output=p;messages.push(p)},async showModal(m){this.modal=m.toJSON()}};
 }
 (async()=>{
- const installed=await setupCommunity(guild,client); assert(installed.manage && installed.inbox);
+ const installed=await setupCommunity(guild,client); assert(installed.manage && installed.inbox && installed.member);assert.equal(installed.member.name,'kelola-member');assert.equal(installed.member.parentId,installed.category.id);assert.equal(installed.member.sent.length,1);
  assert(installed.inbox.permissionOverwrites.cache.get(guild.id).deny.has(PermissionsBitField.Flags.ViewChannel));
  assert(feedback.permissionOverwrites.cache.get(guild.id).deny.has(PermissionsBitField.Flags.SendMessages));
  assert(!feedback.permissionOverwrites.cache.has(worker.id));
@@ -67,5 +67,8 @@ function interaction(id,{channel:ch,memberRoles=[owner],type='button',values=[],
  assert(channels.find(c=>c.name==='channel-private-uji').permissionOverwrites.cache.get(guild.id).deny.has(PermissionsBitField.Flags.ViewChannel));
  installed.inbox.permissionOverwrites.cache.set('bad',{id:'bad',allow:new PermissionsBitField(PermissionsBitField.Flags.ViewChannel),deny:new PermissionsBitField()});
  i=interaction('community:feedback-submit',{channel:feedback,memberRoles:[worker],type:'modal',fields:{judul:'x',isi:'y'}});await assert.rejects(handleCommunityInteraction(i,client,guild.id),/belum aman/);assert.equal(installed.inbox.sent.length,1);
+ // Channel dan panel kelola-member tetap dibuat jika feedback tidak ada.
+ channels.delete(feedback.id);
+ const noFeedback=await setupCommunity(guild,client);assert(noFeedback.member);assert.match(noFeedback.feedbackWarning,/feedback dilewati/);assert.equal(noFeedback.member.sent.length,1);
  console.log('LULUS: setup idempotent, izin privat, form, role, kategori tambah/edit/hapus dan konfirmasi, perlindungan kategori, privasi inbox dan kelola channel teks/suara.');
 })().catch(e=>{console.error(e);process.exitCode=1});

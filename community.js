@@ -97,8 +97,8 @@ async function setupCommunity(guild, client) {
   const [channels] = await Promise.all([guild.channels.fetch(), guild.roles.fetch()]);
   const owner = getOwnerRole(guild);
   const matches = channels.filter(c => c && c.type === ChannelType.GuildText && c.name === FEEDBACK);
-  if (matches.size !== 1) throw new Error('Harus ada tepat satu kanal teks #feedback-and-request sebelum setup.');
-  const feedback = matches.first();
+  const feedback = matches.size === 1 ? matches.first() : null;
+  let feedbackWarning = feedback ? null : 'Form feedback dilewati: pastikan tepat satu channel teks #feedback-and-request, lalu jalankan /setup-komunitas lagi.';
   const cats = channels.filter(c => c && c.type === ChannelType.GuildCategory && c.name === CATEGORY);
   if (cats.size > 1) throw new Error('Kategori KELOLA KOMUNITAS duplikat. Hapus duplikat secara manual.');
   const privatePerms = privateOverwrites(guild, client, owner);
@@ -115,22 +115,29 @@ async function setupCommunity(guild, client) {
     else await channel.permissionOverwrites.set(privatePerms, 'Amankan kanal pengelola');
     made[name] = channel;
   }
-  // Membangun ulang overwrite channel form diperlukan untuk mencabut izin chat lama
-  // dari semua role/member; tidak menyentuh riwayat pesan.
-  await feedback.permissionOverwrites.set([
-    { id: guild.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory], deny: [FLAGS.SendMessages, FLAGS.SendMessagesInThreads, FLAGS.CreatePublicThreads, FLAGS.CreatePrivateThreads] },
-    { id: owner.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory, FLAGS.SendMessages] },
-    { id: client.user.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory, FLAGS.SendMessages] },
-  ], 'Jadikan feedback-and-request kanal formulir tanpa chat');
+  // Panel kelola member dipasang bahkan ketika channel feedback belum tersedia.
+  await ensurePanel(made[MEMBER_CHANNEL], client, 'community:member-edit', memberPanel(), true);
   await ensurePanel(made[MANAGE], client, 'community:add', managePanel());
   await ensurePanel(made[MANAGE_CHANNEL], client, 'community:channel-add', channelManagePanel());
   await ensurePanel(made[SETTINGS_CHANNEL], client, 'community:welcome-edit:announcements', welcomePanel(), true);
-  await ensurePanel(made[MEMBER_CHANNEL], client, 'community:member-edit', memberPanel(), true);
-  await ensurePanel(feedback, client, 'community:feedback', feedbackPanel());
+  if (feedback) {
+    try {
+      // Cabut overwrite chat lama pada feedback; tidak menyentuh riwayat pesan.
+      await feedback.permissionOverwrites.set([
+        { id: guild.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory], deny: [FLAGS.SendMessages, FLAGS.SendMessagesInThreads, FLAGS.CreatePublicThreads, FLAGS.CreatePrivateThreads] },
+        { id: owner.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory, FLAGS.SendMessages] },
+        { id: client.user.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory, FLAGS.SendMessages] },
+      ], 'Jadikan feedback-and-request kanal formulir tanpa chat');
+      await ensurePanel(feedback, client, 'community:feedback', feedbackPanel());
+    } catch (error) {
+      feedbackWarning = `Form feedback belum siap: ${error.message}. Periksa izin bot dan jalankan /setup-komunitas lagi.`;
+      console.error('[FEEDBACK SETUP]', error.message);
+    }
+  }
   let welcomeWarning = null;
   try { await suppressSystemWelcome(guild); }
   catch (error) { welcomeWarning = `Gagal menonaktifkan welcome sistem Discord: ${error.message}`; console.error('[WELCOME SYSTEM]', error.message); }
-  return { category, manage: made[MANAGE], manageChannels: made[MANAGE_CHANNEL], inbox: made[INBOX], welcome: made[SETTINGS_CHANNEL], member: made[MEMBER_CHANNEL], feedback, welcomeWarning };
+  return { category, manage: made[MANAGE], manageChannels: made[MANAGE_CHANNEL], inbox: made[INBOX], welcome: made[SETTINGS_CHANNEL], member: made[MEMBER_CHANNEL], feedback, feedbackWarning, welcomeWarning };
 }
 function safePrivateChannel(channel, guild, client, owner) {
   const overwrites = channel.permissionOverwrites.cache;
