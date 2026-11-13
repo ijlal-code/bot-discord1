@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const selection = require('./selection-continue');
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder,
   ChannelType, EmbedBuilder, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle,
@@ -34,7 +35,7 @@ function take(i, token, kind) {
   pending.delete(token); return item;
 }
 function protectedChannel(c, i) {
-  return c.parentId === i.channel.parentId && PROTECTED_NAMES.has(c.name);
+  return (c.parentId === i.channel.parentId && PROTECTED_NAMES.has(c.name)) || (c.parent?.name === '🗄️ BACKUP' || i.guild.channels.cache.get(c.parentId)?.name === '🗄️ BACKUP');
 }
 function validChannel(c, i) {
   return !!c && CHANNEL_TYPES.includes(c.type) && !protectedChannel(c, i);
@@ -60,7 +61,7 @@ async function handleChannelManagement(i) {
   const id = i.customId;
   if (i.isButton() && id === 'community:channel-add') {
     await i.reply({ content: 'Pilih kategori untuk channel baru. Channel akan menggunakan izin kategori; periksa penguncian role setelahnya.',
-      components: [menu('community:channel-create-category', [ChannelType.GuildCategory], 'Pilih satu kategori', 1), row(button('community:cancel-selection', 'Batal', ButtonStyle.Secondary))], flags: MessageFlags.Ephemeral });
+      components: [menu('community:channel-create-category', [ChannelType.GuildCategory], 'Pilih satu kategori', 1), selection.buttons()], flags: MessageFlags.Ephemeral });
   } else if (i.isChannelSelectMenu() && id === 'community:channel-create-category') {
     const category = i.guild.channels.cache.get(i.values[0]);
     if (i.values.length !== 1 || !category || category.type !== ChannelType.GuildCategory) { await error(i, 'Kategori tidak valid.'); return; }
@@ -98,7 +99,7 @@ async function handleChannelManagement(i) {
   } else if (i.isButton() && (id === 'community:channel-edit' || id === 'community:channel-delete')) {
     const action = id.endsWith('edit') ? 'edit' : 'delete';
     await i.reply({ content: `Pilih hingga 25 channel untuk ${action === 'edit' ? 'diubah namanya' : 'dihapus permanen'}. Channel pengelola dan inbox dilindungi.`,
-      components: [menu(`community:channel-select-${action}`, CHANNEL_TYPES, 'Pilih satu atau beberapa channel', 25), row(button('community:cancel-selection', 'Batal', ButtonStyle.Secondary))], flags: MessageFlags.Ephemeral });
+      components: [menu(`community:channel-select-${action}`, CHANNEL_TYPES, 'Pilih satu atau beberapa channel', 25), selection.buttons()], flags: MessageFlags.Ephemeral });
   } else if (i.isChannelSelectMenu() && (id === 'community:channel-select-edit' || id === 'community:channel-select-delete')) {
     const selected = i.values.map(value => i.guild.channels.cache.get(value));
     if (!selected.length || selected.length > 25 || selected.some(c => !validChannel(c, i))) { await error(i, 'Pilihan tidak valid atau memuat channel yang dilindungi.'); return; }

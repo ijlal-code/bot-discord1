@@ -11,9 +11,10 @@ const {
 const { STATUS_ROLES, buildRulesAndRolePanel, handleRoleButtonInteraction } = require('./role');
 const { runFullServerSetup } = require('./setup');
 const { applyRoleLock, lockNewChannel } = require('./role-lock');
-const { setupCommunity, handleCommunityInteraction, isOwner, sendError } = require('./community');
+const { setupCommunity, handleCommunityInteraction, isOwner, getOwnerRole, sendError } = require('./community');
 const { announceJoin, welcomeAfterRole, suppressSystemWelcome, buildMemberOnboarding } = require('./welcome');
 const { handleMemberCommand } = require('./member-management');
+const { deleteCommand } = require('./backup');
 const { registerCommands } = require('./register-commands');
 
 // =========================================================================
@@ -51,6 +52,8 @@ if (!TOKEN) {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent, // Aktifkan juga Message Content Intent di Developer Portal
     GatewayIntentBits.GuildMembers, // Wajib aktif di Discord Developer Portal
   ],
 });
@@ -175,6 +178,11 @@ client.on('interactionCreate', async (interaction) => {
   // 2. Tangani Slash Command
   if (!interaction.isChatInputCommand()) return;
 
+  if (interaction.commandName === 'hapus-pesan') {
+    await deleteCommand(interaction, client, GUILD_ID, isOwner, getOwnerRole);
+    return;
+  }
+
   if (interaction.commandName === 'onboarding-member') {
     await handleMemberCommand(interaction, client, GUILD_ID, { isOwner, statusRoles: STATUS_ROLES, buildMemberOnboarding });
     return;
@@ -190,7 +198,7 @@ client.on('interactionCreate', async (interaction) => {
     try {
       const result = await setupCommunity(interaction.guild, client);
       const feedbackText = result.feedbackWarning ? `⚠️ ${result.feedbackWarning}` : `Formulir tersedia di ${result.feedback}.`;
-      await interaction.editReply({ content: `✅ Kanal privat siap: ${result.manage}, ${result.manageChannels}, ${result.welcome}, ${result.member}, ${result.messageEditor}, dan ${result.inbox}. ${feedbackText}${result.welcomeWarning ? ` ⚠️ ${result.welcomeWarning}` : ''}`, allowedMentions: { parse: [] } });
+      await interaction.editReply({ content: `✅ Kanal privat siap: ${result.manage}, ${result.manageChannels}, ${result.welcome}, ${result.member}, ${result.messageEditor}, ${result.inbox}, serta kategori backup ${result.backups.category}. ${feedbackText}${result.welcomeWarning ? ` ⚠️ ${result.welcomeWarning}` : ''}`, allowedMentions: { parse: [] } });
     } catch (error) {
       console.error('[SETUP KOMUNITAS ERROR]', error);
       await interaction.editReply({ content: `❌ Setup belum selesai: ${error.message}. Periksa izin bot lalu jalankan ulang /setup-komunitas.` });

@@ -4,6 +4,8 @@ function definitions() {
   const guild = [
     new SlashCommandBuilder().setName('setup-komunitas')
       .setDescription('Siapkan panel privat Owner dan formulir feedback tanpa reset server').toJSON(),
+    new SlashCommandBuilder().setName('hapus-pesan')
+      .setDescription('Owner: pilih pesan di channel ini untuk dibackup dan dihapus').toJSON(),
     new SlashCommandBuilder().setName('onboarding-member')
       .setDescription('Tampilkan onboarding untuk satu member di #diskusi')
       .addUserOption(option => option.setName('member').setDescription('Member yang ingin ditampilkan').setRequired(true)).toJSON(),
@@ -64,6 +66,7 @@ async function registerCommands(rest, applicationId, guildId) {
     // Kedua command ini memang hanya untuk GUILD_ID. Hapus versi global lama
     // SETELAH versi server terdaftar agar tidak muncul dua kali di server target.
     for (const name of result.guildSucceeded) {
+      if (!['setup-komunitas', 'onboarding-member'].includes(name)) continue;
       const previous = findSlash(existing, name);
       if (!previous) continue;
       try { await rest.delete(Routes.applicationCommand(applicationId, previous.id)); }

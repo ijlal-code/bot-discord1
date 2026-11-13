@@ -1,9 +1,10 @@
 const crypto = require('node:crypto');
+const selection = require('./selection-continue');
 const {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ChannelType,EmbedBuilder,MessageFlags,ModalBuilder,TextInputBuilder,TextInputStyle}=require('discord.js');
 const CHANNEL='edit-pesan-channel-awal';
 const pending=new Map();
 const row=(...v)=>new ActionRowBuilder().addComponents(...v);
-const cancel=()=>row(new ButtonBuilder().setCustomId('community:cancel-selection').setLabel('Batal').setStyle(ButtonStyle.Secondary));
+const cancel=()=>selection.buttons();
 function panel(){return {embeds:[new EmbedBuilder().setColor(0x1e293b).setTitle('Edit pesan awal channel').setDescription('Pilih channel, lalu pilih pesan awal yang dikirim bot. Edit teks, author, judul, isi embed pertama, field, footer dan waktu sekaligus. Tombol role/form dan bagian embed lain dipertahankan. Pesan orang lain tidak dapat diedit. Maksimal 25 pesan bot terawal ditampilkan.')],components:[row(new ButtonBuilder().setCustomId('community:initial-open').setLabel('Pilih channel & pesan').setStyle(ButtonStyle.Primary))],allowedMentions:{parse:[]}};}
 function eligible(c){return [ChannelType.GuildText,ChannelType.GuildAnnouncement].includes(c?.type) && (['rules-and-role','announcements','berita'].includes(c.name) || c.parent?.name==='⚡ AINUN IJLAL STUDIO');}
 function token(i,data){for(const [k,v] of pending) if(v.expires<Date.now()) pending.delete(k);const k=crypto.randomBytes(12).toString('hex');pending.set(k,{...data,user:i.user.id,guild:i.guildId,expires:Date.now()+900000});return k;}

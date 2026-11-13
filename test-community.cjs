@@ -20,7 +20,7 @@ function interaction(id,{channel:ch,memberRoles=[owner],type='button',values=[],
  return {customId:id,guild,guildId:guild.id,channel:ch,user:{id:'100000000000000005',tag:'test#0001'},member:{roles:{cache:new Collection(memberRoles.map(x=>[x.id,x]))}},values, fields:{getTextInputValue:k=>fields[k]},isButton:()=>type==='button',isModalSubmit:()=>type==='modal',isChannelSelectMenu:()=>type==='select',async reply(p){this.replied=true;this.output=p;messages.push(p)},async update(p){this.replied=true;this.output=p;messages.push(p)},async deferReply(){this.deferred=true},async deferUpdate(){this.deferred=true},async deleteReply(){this.deleted=true},async editReply(p){this.output=p;messages.push(p)},async showModal(m){this.modal=m.toJSON()}};
 }
 (async()=>{
- const installed=await setupCommunity(guild,client); assert(installed.manage && installed.inbox && installed.member && installed.messageEditor);assert.equal(installed.messageEditor.parentId,installed.category.id);assert.equal(installed.member.name,'kelola-member');assert.equal(installed.member.parentId,installed.category.id);assert.equal(installed.member.sent.length,1);
+ const installed=await setupCommunity(guild,client); assert(installed.manage && installed.inbox && installed.member && installed.messageEditor && installed.backups);assert.equal(installed.backups.category.name,'🗄️ BACKUP');assert(installed.backups['pesan-dihapus']);assert(installed.backups['riwayat-chat']);assert.equal(installed.messageEditor.parentId,installed.category.id);assert.equal(installed.member.name,'kelola-member');assert.equal(installed.member.parentId,installed.category.id);assert.equal(installed.member.sent.length,1);
  assert(installed.inbox.permissionOverwrites.cache.get(guild.id).deny.has(PermissionsBitField.Flags.ViewChannel));
  assert(feedback.permissionOverwrites.cache.get(guild.id).deny.has(PermissionsBitField.Flags.SendMessages));
  assert(!feedback.permissionOverwrites.cache.has(worker.id));
@@ -38,6 +38,7 @@ function interaction(id,{channel:ch,memberRoles=[owner],type='button',values=[],
  i=interaction(modalId,{channel:installed.manage,type:'modal',fields:{names:`${a.id} | Satu\n${b.id} | Dua`}});await handleCommunityInteraction(i,client,guild.id);assert.equal(a.name,'Satu');assert.equal(b.name,'Dua');
  i=interaction('community:select-delete',{channel:installed.manage,type:'select',values:[a.id,b.id]});await handleCommunityInteraction(i,client,guild.id);const confirm=i.output.components[0].toJSON().components[0].custom_id;assert(i.output.embeds[0].toJSON().description.includes('Dua'));
  i=interaction(confirm,{channel:installed.manage});await handleCommunityInteraction(i,client,guild.id);assert(!channels.has(a.id)&&!channels.has(b.id));
+ i=interaction('community:select-delete',{channel:installed.manage,type:'select',values:[installed.backups.category.id]});await handleCommunityInteraction(i,client,guild.id);assert.match(i.output.content,/dilindungi/);
  i=interaction('community:select-delete',{channel:installed.manage,type:'select',values:[installed.category.id]});await handleCommunityInteraction(i,client,guild.id);assert.match(i.output.content,/dilindungi/);
  // Channel management: membuat, mengganti nama, mengonfirmasi dan melindungi channel.
  const managed=installed.manageChannels; assert(managed); assert.equal(managed.sent.length,1);
@@ -56,7 +57,7 @@ function interaction(id,{channel:ch,memberRoles=[owner],type='button',values=[],
  i=interaction('community:channel-select-delete',{channel:managed,type:'select',values:[c1.id,c2.id]}); await handleCommunityInteraction(i,client,guild.id); let confirmChannel=i.output.components[0].toJSON().components[0].custom_id; assert.match(i.output.content,/permanen/); assert.match(i.output.embeds[0].toJSON().description,/kedua/);
  i=interaction(confirmChannel,{channel:managed}); i.user.id='100000000000000099'; await handleCommunityInteraction(i,client,guild.id); assert.match(i.output.content,/kedaluwarsa/); assert(channels.has(c1.id));
  i=interaction(confirmChannel,{channel:managed}); await handleCommunityInteraction(i,client,guild.id); assert(!channels.has(c1.id) && !channels.has(c2.id));
- for (const protectedCh of [installed.manage,installed.manageChannels,installed.inbox,installed.welcome,installed.member,installed.messageEditor]) {
+ for (const protectedCh of [installed.manage,installed.manageChannels,installed.inbox,installed.welcome,installed.member,installed.messageEditor,installed.backups['pesan-dihapus'],installed.backups['riwayat-chat']]) {
    i=interaction('community:channel-select-delete',{channel:managed,type:'select',values:[protectedCh.id]}); await handleCommunityInteraction(i,client,guild.id); assert.match(i.output.content,/dilindungi/);
  }
  i=interaction('community:channel-create-category',{channel:managed,type:'select',values:[category.id]}); await handleCommunityInteraction(i,client,guild.id); typeButton=i.output.components[0].toJSON().components[1].custom_id;

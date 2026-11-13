@@ -4,6 +4,8 @@ const {
   ChannelType, EmbedBuilder, MessageFlags, ModalBuilder, PermissionsBitField,
   TextInputBuilder, TextInputStyle,
 } = require('discord.js');
+const selection = require('./selection-continue');
+const backup = require('./backup');
 const { CHANNEL: MESSAGE_CHANNEL, panel: messagePanel, handle: handleMessageEditor } = require('./message-management');
 const { STATUS_ROLES } = require('./role');
 const { channelManagePanel, handleChannelManagement } = require('./channel-management');
@@ -91,7 +93,7 @@ function privateOverwrites(guild, client, owner) {
   return [
     { id: guild.id, deny: [FLAGS.ViewChannel] },
     { id: owner.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory, FLAGS.SendMessages] },
-    { id: client.user.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory, FLAGS.SendMessages] },
+    { id: client.user.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory, FLAGS.SendMessages, FLAGS.AttachFiles, FLAGS.EmbedLinks] },
   ];
 }
 async function setupCommunity(guild, client) {
@@ -128,7 +130,7 @@ async function setupCommunity(guild, client) {
       await feedback.permissionOverwrites.set([
         { id: guild.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory], deny: [FLAGS.SendMessages, FLAGS.SendMessagesInThreads, FLAGS.CreatePublicThreads, FLAGS.CreatePrivateThreads] },
         { id: owner.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory, FLAGS.SendMessages] },
-        { id: client.user.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory, FLAGS.SendMessages] },
+        { id: client.user.id, allow: [FLAGS.ViewChannel, FLAGS.ReadMessageHistory, FLAGS.SendMessages, FLAGS.AttachFiles, FLAGS.EmbedLinks] },
       ], 'Jadikan feedback-and-request kanal formulir tanpa chat');
       await ensurePanel(feedback, client, 'community:feedback', feedbackPanel());
     } catch (error) {
@@ -136,10 +138,11 @@ async function setupCommunity(guild, client) {
       console.error('[FEEDBACK SETUP]', error.message);
     }
   }
+  const backups = await backup.setupBackup(guild, client, owner, privatePerms);
   let welcomeWarning = null;
   try { await suppressSystemWelcome(guild); }
   catch (error) { welcomeWarning = `Gagal menonaktifkan welcome sistem Discord: ${error.message}`; console.error('[WELCOME SYSTEM]', error.message); }
-  return { category, manage: made[MANAGE], manageChannels: made[MANAGE_CHANNEL], inbox: made[INBOX], welcome: made[SETTINGS_CHANNEL], member: made[MEMBER_CHANNEL], messageEditor: made[MESSAGE_CHANNEL], feedback, feedbackWarning, welcomeWarning };
+  return { category, manage: made[MANAGE], manageChannels: made[MANAGE_CHANNEL], inbox: made[INBOX], welcome: made[SETTINGS_CHANNEL], member: made[MEMBER_CHANNEL], messageEditor: made[MESSAGE_CHANNEL], backups, feedback, feedbackWarning, welcomeWarning };
 }
 function safePrivateChannel(channel, guild, client, owner) {
   const overwrites = channel.permissionOverwrites.cache;
@@ -195,7 +198,9 @@ async function handleCommunityInteraction(i, client, guildId) {
     return true;
   }
   if (!isOwner(i)) { await sendError(i, '⛔ Hanya anggota dengan role Owner yang dapat menggunakan fitur ini.'); return true; }
+  if (await selection.intercept(i, p => handleCommunityInteraction(p, client, guildId))) return true;
   if (i.isButton() && id === 'community:cancel-selection') { await i.deferUpdate(); await i.deleteReply(); return true; }
+  if (id.startsWith('community:backup-')) { await backup.handle(i, client, getOwnerRole); return true; }
   if (id.startsWith('community:initial-')) {
     if (!i.channel || i.channel.name !== MESSAGE_CHANNEL || i.channel.parent?.name !== CATEGORY) { await sendError(i, '⛔ Gunakan panel di #edit-pesan-channel-awal.'); return true; }
     await handleMessageEditor(i, client); return true;
@@ -228,10 +233,10 @@ async function handleCommunityInteraction(i, client, guildId) {
     await i.showModal(modal('community:add-submit', 'Tambah kategori', 'names', 'Satu nama kategori per baris (maks. 25)', undefined, 3000));
   } else if (i.isButton() && (id === 'community:edit' || id === 'community:delete')) {
     const action = id.endsWith('edit') ? 'edit' : 'delete';
-    await i.reply({ content: `Pilih maksimal 25 kategori untuk ${action === 'edit' ? 'diubah namanya' : 'dihapus'}. Kategori kelola komunitas dilindungi.`, components: [channelSelect(action), row(button('community:cancel-selection', 'Batal', ButtonStyle.Secondary))], flags: MessageFlags.Ephemeral });
+    await i.reply({ content: `Pilih maksimal 25 kategori untuk ${action === 'edit' ? 'diubah namanya' : 'dihapus'}. Kategori kelola komunitas dilindungi.`, components: [channelSelect(action), selection.buttons()], flags: MessageFlags.Ephemeral });
   } else if (i.isChannelSelectMenu() && (id === 'community:select-edit' || id === 'community:select-delete')) {
     const categories = i.values.map(id => i.guild.channels.cache.get(id));
-    if (!categories.length || categories.some(c => !c || c.type !== ChannelType.GuildCategory || c.id === i.channel.parentId)) {
+    if (!categories.length || categories.some(c => !c || c.type !== ChannelType.GuildCategory || (c.id === i.channel.parentId || c.name === backup.CATEGORY))) {
       await sendError(i, 'Pilihan tidak valid atau memuat kategori kelola komunitas yang dilindungi.'); return true;
     }
     if (id.endsWith('edit')) {
@@ -265,7 +270,7 @@ async function handleCommunityInteraction(i, client, guildId) {
     for (const e of entries) {
       try {
         const c = await i.guild.channels.fetch(e.id);
-        if (!c || c.type !== ChannelType.GuildCategory || c.id === i.channel.parentId) throw Error('Kategori tidak tersedia atau dilindungi');
+        if (!c || c.type !== ChannelType.GuildCategory || (c.id === i.channel.parentId || c.name === backup.CATEGORY)) throw Error('Kategori tidak tersedia atau dilindungi');
         await c.setName(e.name, `Diubah oleh ${i.user.id} melalui panel`); ok++;
       } catch (error) { errors.push(`${e.id}: ${error.message}`); }
     }
@@ -281,7 +286,7 @@ async function handleCommunityInteraction(i, client, guildId) {
     for (const item of data.items) {
       try {
         const c = await i.guild.channels.fetch(item.id);
-        if (!c || c.type !== ChannelType.GuildCategory || c.name !== item.name || c.id === i.channel.parentId) throw Error('Kategori berubah, tidak tersedia, atau dilindungi');
+        if (!c || c.type !== ChannelType.GuildCategory || c.name !== item.name || (c.id === i.channel.parentId || c.name === backup.CATEGORY)) throw Error('Kategori berubah, tidak tersedia, atau dilindungi');
         await c.delete(`Dihapus oleh ${i.user.id} melalui panel`); ok++;
       } catch (error) { errors.push(`${item.name}: ${error.message}`); }
     }
@@ -291,4 +296,4 @@ async function handleCommunityInteraction(i, client, guildId) {
   }
   return true;
 }
-module.exports = { setupCommunity, handleCommunityInteraction, isOwner, sendError };
+module.exports = { setupCommunity, handleCommunityInteraction, isOwner, getOwnerRole, sendError };

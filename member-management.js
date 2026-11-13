@@ -4,6 +4,7 @@ const {
 } = require('discord.js');
 
 const editor = require('./editor-template');
+const selection = require('./selection-continue');
 const MEMBER_CHANNEL = 'kelola-member';
 const CATEGORY = '🔐 KELOLA KOMUNITAS';
 const PROFILE_MARKER = 'member-onboarding:v1:';
@@ -69,7 +70,7 @@ async function memberBody(guild, client, memberId) { return (await memberProfile
 async function handleMemberInteraction(i, client, readGeneralConfig, updateLastMessage) {
   if (i.isButton() && i.customId === 'community:member-edit') {
     await i.reply({ content: 'Pilih member yang onboarding-nya ingin diedit. Isi akan dapat dilihat di #diskusi melalui slash command.',
-      components: [row(new UserSelectMenuBuilder().setCustomId('community:member-select').setPlaceholder('Pilih satu member').setMinValues(1).setMaxValues(1)), row(new ButtonBuilder().setCustomId('community:cancel-selection').setLabel('Batal').setStyle(ButtonStyle.Secondary))],
+      components: [row(new UserSelectMenuBuilder().setCustomId('community:member-select').setPlaceholder('Pilih satu member').setMinValues(1).setMaxValues(1)), selection.buttons()],
       flags: MessageFlags.Ephemeral });
   } else if (i.isUserSelectMenu() && i.customId === 'community:member-select') {
     if (i.values.length !== 1) throw new Error('Pilih tepat satu member.');
