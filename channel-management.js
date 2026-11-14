@@ -8,7 +8,7 @@ const {
 // Hanya channel non-thread. Thread membutuhkan aturan berbeda dari channel biasa.
 const CHANNEL_TYPES = [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement,
   ChannelType.GuildStageVoice, ChannelType.GuildForum, ChannelType.GuildMedia];
-const PROTECTED_NAMES = new Set(['kelola-kategori', 'kelola-channel', 'terima-form', 'kelola-embed-welcome-member', 'kelola-member', 'edit-pesan-channel-awal']);
+const PROTECTED_NAMES = new Set(['kelola-kategori', 'kelola-channel', 'terima-form', 'kelola-embed-welcome-member', 'kelola-member', 'edit-pesan-channel-awal', 'kelola-slash-command']);
 const pending = new Map();
 const row = (...components) => new ActionRowBuilder().addComponents(...components);
 const button = (id, label, style) => new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);

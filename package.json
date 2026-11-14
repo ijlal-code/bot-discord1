@@ -1,16 +1,17 @@
 {
   "name": "discord-welcome-bot",
-  "version": "1.0.0",
-  "description": "Bot Discord Embed Welcome 24/7 di Render",
+  "version": "2.0.0",
+  "description": "Bot komunitas multiserver dengan dashboard Discord OAuth dan MongoDB",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "discord.js": "^14.28.1",
-    "fflate": "^0.8.2"
+    "fflate": "^0.8.3",
+    "mongodb": "^6.22.0"
   }
 }

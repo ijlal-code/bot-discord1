@@ -1,16 +1,59 @@
-# Panduan bot komunitas
+# Panduan bot komunitas multiserver — versi pengembangan
 
-## Pemasangan dan pembaruan
+Satu proses bot dan satu aplikasi Discord melayani beberapa server secara bersamaan. Aktivasi dan pilihan akses disimpan per ID server di MongoDB. Template welcome, profil member, referensi pesan, backup dan konfigurasi fitur lama tetap disimpan dalam channel Discord privat masing-masing server; **tidak dipindahkan ke MongoDB**. Data lama di channel tidak dihapus atau dimigrasikan otomatis. Konten default masih membawa merek, tautan dan email Ainun Ijlal Studio; periksa dan sesuaikan sebelum digunakan di komunitas lain.
 
-1. Cadangkan repository dan izin server. Salin **semua** file dari folder `bot-discord` ke root repository Render (termasuk `editor-template.js` dan `message-management.js`). Commit dan deploy. Build: `npm ci`; start: `npm start`. Jangan unggah `node_modules` atau token ke repository.
-2. Atur environment `DISCORD_TOKEN` dan **`WELCOME_CHANNEL_ID`** (walaupun namanya CHANNEL, isinya harus ID **server**, bukan ID channel/aplikasi). `OWNER_ROLE_ID` opsional bila nama role bukan `Owner` atau terdapat duplikat. Aktifkan **Server Members Intent** dan **Message Content Intent** di Discord Developer Portal → Bot. Message Content Intent wajib untuk isi pesan dan lampiran pengguna; tanpa akses ini bot dapat gagal terhubung atau menerima data kosong. Bot terverifikasi mungkin memerlukan persetujuan Discord. Bot menggunakan `WELCOME_CHANNEL_ID` sebagai ID server dan tidak membaca `GUILD_ID`. Bot membaca kedua nilai hanya dari environment; tidak ada ID server cadangan di kode. Jika salah satu tidak tersedia, bot berhenti. Jangan bagikan token.
-3. Bot memerlukan izin Manage Server (untuk mematikan welcome sistem), Manage Channels, Manage Roles, View Channels, Send Messages, Read Message History, Embed Links, Attach Files, dan izin efektif pada channel terkait. Posisi role bot harus di atas role status. Pastikan role `Pekerja`, `Pelajar`, dan `Umum`, serta satu `#rules-and-role` dan satu `#diskusi`, tersedia. Member baru perlu izin **View Channel** dan **Read Message History** di `#diskusi` agar melihat welcome sebelum memilih role; tidak perlu izin kirim pesan.
-4. Jalankan **`/setup-komunitas`** sebagai anggota yang benar-benar memiliki role Owner (atau role `OWNER_ROLE_ID`), termasuk bila Anda pemilik server. Perintah memasang/memperbarui panel dan menyiapkan kategori `🔐 KELOLA KOMUNITAS` dengan enam channel privat: `#kelola-kategori`, `#kelola-channel`, `#kelola-embed-welcome-member`, `#kelola-member`, `#edit-pesan-channel-awal`, dan `#terima-form`. Setup juga membuat kategori privat `🗄️ BACKUP` berisi `#pesan-dihapus` dan `#riwayat-chat`.
-5. Jika satu `#feedback-and-request` tersedia, perintah juga memasang panel formulir dan menata izinnya. Jika tidak ada atau duplikat, channel pengelola tetap dibuat dan peringatan ditampilkan.
+## Perhatian sebelum memperbarui
 
-**Penting:** `/setup-komunitas` mengganti seluruh permission overwrite kategori pengelola, keenam channel privat, kategori BACKUP dan kedua channel-nya, dan `#feedback-and-request` bila ada. Overwrite khusus sebelumnya di lokasi tersebut akan terhapus. Periksa akses setelahnya. Pemilik server dan anggota berizin Administrator dapat melewati privasi Discord. Perintah ini tidak menghapus channel atau riwayat pesan.
+- Gunakan server uji dan cadangan. Ini adalah versi pengembangan, belum diuji langsung pada Discord, Render, atau MongoDB Anda, dan belum siap dijual sebagai layanan komersial tanpa uji integrasi, audit keamanan, kebijakan privasi, backup, pemantauan dan pengaturan lisensi/pembayaran. Tidak ada sistem pembayaran atau lisensi.
+- Enam command bawaan bot yang dikenal kini default-nya tersembunyi untuk member biasa. Hak akses khusus/overwrite Integrations yang sudah ada **tidak dihapus otomatis** dan bisa membuat command lama tetap terlihat. Periksa tiap server dan command global lama. Administrator Discord tetap bisa melihat/menjalankan command menurut aturan Discord, tetapi bot juga memeriksa izin saat menjalankan.
+- Registrasi command global pada startup memperbarui default permission command global bot yang dikenal **di seluruh server aplikasi ini**. Tidak menghapus command lain atau overwrite yang sudah ada; pastikan semua server yang memakai bot siap untuk perubahan ini.
+- `WELCOME_CHANNEL_ID` (yang sebelumnya berisi ID server) dan `OWNER_ROLE_ID` global tidak digunakan lagi. Tidak perlu menghapus env lama, tetapi tidak mengubah server dengan mengedit kedua nilai tersebut. Setiap server diaktifkan lewat dashboard dan harus memiliki tepat satu role bernama `Owner` (huruf besar/kecil sesuai). Owner harus memiliki role ini, termasuk pemilik server.
+- Jalankan **satu instance** Render saja: sesi OAuth, cache server aktif, kunci operasi dan sebagian batasan berada di memori. Tidak mendukung beberapa instance/worker atau perubahan MongoDB manual ketika proses berjalan; restart diperlukan setelah perubahan manual. Maksimal 1.000 server aktif dalam implementasi ini; belum diuji untuk skala tersebut.
 
-## Welcome dan onboarding di #diskusi
+## 1. Siapkan Discord dan MongoDB
+
+1. Buat/siapkan satu Discord Application dan bot. Undang bot ke setiap server dengan scope `bot` dan `applications.commands`. Berikan izin yang dibutuhkan fitur yang dipakai, misalnya Manage Channels, Manage Roles, Manage Messages, View Channels, Read Message History, Send Messages, Embed Links dan Attach Files. Posisi role bot harus di atas role status yang dikelolanya. Berikan hanya izin yang diperlukan dan uji di server percobaan.
+2. Aktifkan **Server Members Intent** dan **Message Content Intent** pada Developer Portal → Bot. Aplikasi berskala tertentu dapat memerlukan persetujuan Discord.
+3. Siapkan database MongoDB/Atlas, user database terpisah dengan hak minimum untuk database aplikasi, koneksi TLS, dan jaringan yang mengizinkan Render terhubung. Simpan string koneksi hanya pada env Render, bukan dalam kode, chat atau Git. Atur backup dan pembatasan jaringan sesuai infrastruktur. IP terbuka untuk semua sumber meningkatkan risiko dan bukan pengganti autentikasi yang kuat.
+4. Di Developer Portal → OAuth2, tambahkan redirect URI **persis** `https://ALAMAT-RENDER-ANDA/auth/callback`. Gunakan domain HTTPS Render yang benar, tanpa slash di akhir pada nilai DASHBOARD_URL.
+
+## 2. Environment Render
+
+Buat Web Service dari folder ini, dengan Build Command `npm ci` dan Start Command `npm start`. Set environment berikut (jangan sertakan tanda kutip):
+
+| Key | Isi |
+| --- | --- |
+| `DISCORD_TOKEN` | Bot token aplikasi Discord; rahasia. |
+| `DISCORD_CLIENT_ID` | Application ID dari aplikasi yang sama dengan token bot. |
+| `DISCORD_CLIENT_SECRET` | OAuth2 Client Secret aplikasi Discord; rahasia. |
+| `MONGODB_URI` | MongoDB connection string termasuk kredensial; rahasia. |
+| `MONGODB_DB` | Opsional; nama database, default `komunitas`. |
+| `DASHBOARD_URL` | Origin HTTPS dashboard, misalnya `https://contoh.onrender.com`, tanpa path atau slash di akhir. |
+| `PORT` | Diisi Render otomatis. |
+
+Node.js 20 atau lebih baru disarankan. Bila kredensial pernah terlanjur bocor, rotasi di penyedia masing-masing. Jangan isi contoh atau nilai asli pada file proyek. Aplikasi berhenti jika MongoDB/token/env dashboard tidak valid; baca log Render tanpa membagikan rahasia.
+
+## 3. Aktifkan server dari dashboard
+
+1. Undang bot ke server. Pastikan tepat satu role `Owner` ada dan akun yang masuk memilikinya. Selain itu akun harus punya **Manage Server** dan **Manage Roles**, atau menjadi pemilik server. Ini juga membantu memenuhi persyaratan Discord untuk mengelola izin command.
+2. Buka URL Render dan klik **Masuk dengan Discord**; setujui scope `identify`, `guilds`, dan `applications.commands.permissions.update`. Token OAuth disimpan sementara di memori proses, bukan di MongoDB; sesi habis paling lama sekitar satu jam atau saat restart/logout. Jangan bagikan sesi atau token.
+3. Klik **Aktifkan** pada server, atau masukkan ID server pada kolom di dashboard. Bot harus sudah ada dalam server. Dashboard memverifikasi keanggotaan dan izin ulang di server tersebut sebelum mendaftarkan command dan menyimpan ID-nya. Daftar menampilkan paling banyak 50 server pertama dari respons Discord; ID server bisa dimasukkan secara manual bila tidak tercantum.
+4. Jalankan `/setup-komunitas` pada server tersebut untuk membuat/memperbarui panel privat, termasuk `#kelola-slash-command`. Jika role Owner bukan Administrator dan perintah tidak terlihat, desktop Discord → Server Settings → Integrations → aplikasi bot → `/setup-komunitas` → berikan akses role Owner. Atur juga `/hapus-pesan` untuk Owner bila dibutuhkan. User harus punya izin Use Application Commands.
+5. **Perhatian izin:** `/setup-komunitas` mengganti overwrite kategori dan channel pengelola, kategori backup dan kedua channel-nya, serta `#feedback-and-request` bila ada. Izin khusus pada lokasi tersebut dapat hilang; periksa kembali. Saat startup bot tidak otomatis mengubah role/channel atau menerapkan kunci chat; gunakan `/kunci-chat` setelah meninjau izin jika dibutuhkan.
+6. Mengklik **Nonaktifkan** menghentikan pemrosesan server oleh bot dan menghapus pilihan akses member dari MongoDB; data channel dan riwayat tetap ada. Perintah yang sudah terdaftar dan overwrite Discord **tidak dihapus**, sehingga bisa tetap terlihat walau bot menolak penggunaannya. Atur Integrations atau hapus bot secara manual bila ingin menghilangkannya. Mengaktifkan kembali mendaftarkan ulang command, lalu lakukan pengaturan member ulang.
+7. Jika bot dikeluarkan dari server, aplikasi mencoba menonaktifkannya di MongoDB. Jika database sedang gagal, verifikasi status manual sebelum restart atau undang ulang.
+
+## 4. Pilih command untuk member
+
+1. Login ulang ke dashboard dengan akun yang sama bila sesi telah habis. Di Discord, sebagai role Owner, jalankan `/setup-komunitas`, lalu buka `🔐 KELOLA KOMUNITAS` → `#kelola-slash-command`.
+2. Klik **Pilih perintah**, pilih `/onboarding-member` atau **Tidak ada**, lalu **Terapkan**, atau **Batal**. Saat ini hanya `/onboarding-member` yang dianggap aman untuk member. Perintah reset, hapus, setup dan pengelola tidak dapat dibuka ke member melalui panel ini; menambahkan pilihan lain memerlukan implementasi pengecekan akses terlebih dahulu.
+3. Bot memakai OAuth akun yang login untuk mengganti **seluruh overwrite permission** `/onboarding-member` versi guild: @everyone, role Owner, semua channel dan #diskusi. Overwrite individual sebelumnya untuk command itu akan tertimpa. Pengaturan ini tidak mengubah command lain. User OAuth harus dapat menjalankan command tersebut serta mempunyai Manage Server, Manage Roles dan hak mengelola resource terkait. Jika gagal, login ulang; periksa izin dan bila perlu berikan akses Owner ke command tersebut di Discord Integrations sebelum menerapkan.
+4. Discord dapat menerapkan izin channel juga pada thread. Bot tetap memeriksa ID channel #diskusi, server aktif, pilihan perintah, dan role status sebelum memproses member; thread tidak didukung. Jika #diskusi dibuat ulang, pilih dan terapkan lagi.
+5. Mengubah Integrations secara manual tidak menyinkronkan pilihan ke MongoDB; panel adalah sumber perubahan yang disarankan. Hak Discord lain, khususnya Administrator dan overwrite lama/perintah global lama, dapat memengaruhi visibilitas. Jika penyimpanan MongoDB gagal sesudah perubahan Discord, command mungkin terlihat tetapi bot menolak; perbaiki database lalu terapkan lagi. Discord membatasi API; ini tidak menjamin bebas rate limit.
+
+**Perintah reset:** `/setup-server` lama tetap ada tetapi memerlukan role Owner, Administrator, dan konfirmasi. Ia dapat menghapus channel, riwayat, role dan aturan AutoMod secara permanen serta menciptakan ulang struktur dengan merek lama. Jangan gunakan untuk upgrade; gunakan `/setup-komunitas`. Backup terlebih dahulu.
+
+## Fitur yang sudah ada
 
 Saat anggota baru masuk, bot mengirim **welcome member baru** di `#diskusi` yang mengarahkan mereka memilih role, tanpa DM dan tanpa memberikan role otomatis. Setelah anggota itu pertama kali memilih role di panel bot, bot mengirim **onboarding setelah role** yang berbeda, juga di `#diskusi`. Mengganti atau melepas role tidak mengirim ulang. Konfirmasi pemilihan role berupa respons privat, bukan DM.
 
@@ -40,7 +83,7 @@ Pengaturan disimpan di pesan bot dalam channel privat, bukan di filesystem Rende
 
 Di `#kelola-member`, klik **Edit onboarding member**, pilih member, lalu edit semua bagian pada satu formulir dengan format di atas. Pengaturan khusus hanya berlaku pada member tersebut, menggantikan template umum. Setelah disimpan bot mencoba mengedit **pesan onboarding terakhir** member di `#diskusi`; jika tidak ditemukan, pengaturan tetap tersimpan. Pesan baru dilacak secara privat. Untuk pesan lama bot mencari hingga 1.000 pesan terakhir dengan User ID yang cocok di footer; hasil bergantung pada format lama. Jalankan `/onboarding-member` untuk menerbitkan pesan baru yang dapat dilacak.
 
-Di `#diskusi`, gunakan `/onboarding-member` lalu pilih `member`. Pemanggil harus memiliki role Owner, Pekerja, Pelajar, atau Umum. Pesan hasilnya publik; jangan masukkan data rahasia. Member tanpa profil khusus menggunakan template umum. Akun bot tidak dapat dipilih.
+Di `#diskusi`, gunakan `/onboarding-member` lalu pilih `member`. Untuk member biasa, Owner harus mengaktifkannya melalui #kelola-slash-command terlebih dahulu. Pemanggil harus memiliki role Owner, Pekerja, Pelajar, atau Umum. Pesan hasilnya publik; jangan masukkan data rahasia. Member tanpa profil khusus menggunakan template umum. Akun bot tidak dapat dipilih.
 
 ## Edit pesan awal channel
 
@@ -54,11 +97,11 @@ Pada dropdown di panel kategori, channel, member, editor pesan awal, backup dan 
 
 `#kelola-kategori`: tambah hingga 25 nama per formulir; pilih hingga 25 kategori untuk edit nama atau hapus dengan konfirmasi. Menghapus kategori tidak menghapus channel anak, tetapi dapat mengubah aksesnya; periksa izin. Kategori pengelola dilindungi.
 
-`#kelola-channel`: buat hingga 25 channel teks/suara, atau pilih hingga 25 channel untuk edit nama/hapus. Izin kategori disalin saat pembuatan. **Hapus channel menghapus riwayat secara permanen** setelah konfirmasi. Keenam channel pengelola dilindungi. Periksa izin efektif channel baru, termasuk role status, karena kunci chat bot dan overwrite lain dapat memengaruhinya. Pilihan tersimpan sementara maksimal 15 menit dan hilang saat bot restart.
+`#kelola-channel`: buat hingga 25 channel teks/suara, atau pilih hingga 25 channel untuk edit nama/hapus. Izin kategori disalin saat pembuatan. **Hapus channel menghapus riwayat secara permanen** setelah konfirmasi. Channel pengelola termasuk #kelola-slash-command dilindungi. Periksa izin efektif channel baru, termasuk role status, karena kunci chat bot dan overwrite lain dapat memengaruhinya. Pilihan tersimpan sementara maksimal 15 menit dan hilang saat bot restart.
 
 ## Hapus pesan dan salinan di #pesan-dihapus
 
-1. Jalankan `/hapus-pesan` **di channel asal** sebagai anggota role Owner (atau `OWNER_ROLE_ID`). Owner dan bot harus dapat melihat serta membaca riwayat channel; bot juga memerlukan **Manage Messages** di channel asal dan **Attach Files** di `#pesan-dihapus`. Kategori pengelola dan backup dilindungi dari command ini.
+1. Jalankan `/hapus-pesan` **di channel asal** sebagai anggota role Owner. Owner dan bot harus dapat melihat serta membaca riwayat channel; bot juga memerlukan **Manage Messages** di channel asal dan **Attach Files** di `#pesan-dihapus`. Kategori pengelola dan backup dilindungi dari command ini.
 2. Gunakan **Berikutnya**, **Kembali ke awal**, atau **Cari pesan** untuk mencari teks, nama pengguna, atau ID pesan. Pencarian teks/nama memeriksa maksimal 500 pesan terbaru; pencarian berdasarkan ID tepat dapat menemukan pesan lebih lama yang masih dapat diakses. Hasil tidak selalu mencakup seluruh riwayat. Pilih 1–10 pesan, tekan **Lanjutkan**, periksa preview dan ID, lalu konfirmasi.
 3. Sebelum menghapus setiap pesan, bot mengirim metadata serta **salinan isi, embed yang didukung dan lampiran** ke `🗄️ BACKUP` → `#pesan-dihapus` sebagai pesan Discord, bukan ZIP. Salinan dikirim oleh bot, **bukan oleh akun penulis asli**; header menunjukkan ID penulis, channel, pesan, dan waktu asal. Bot menonaktifkan ping pada salinan. Pesan sumber baru dihapus setelah salinan terkirim. Jika pengiriman, lampiran, atau pengecekan gagal, sumber dilewati. Jika sumber berubah, salinan dapat tetap ada tetapi sumber tidak dihapus.
 
@@ -84,14 +127,7 @@ Hanya satu operasi pencarian/backup/ekspor/pembersihan berjalan per server, deng
 
 Isi form diperlakukan sebagai data teks saja; bot tidak menjalankan atau mengevaluasi kode dari input dan tidak mengunduh tautan dalam feedback. Markdown di-escape, mention dinonaktifkan/diubah, dan awalan tautan HTTP(S) serta `www.` dinetralkan pada salinan yang diterima. Karakter kontrol tertentu dihapus. Batasnya satu kiriman per pengguna setiap 30 detik dan 30 kiriman per server setiap menit; batas ini bersifat sementara dalam memori dan direset saat restart. Bot dan Discord tetap tidak bisa menjamin keamanan semua tautan atau lampiran; jangan membuka konten mencurigakan.
 
-## Jika command tidak muncul
 
-`/setup-komunitas`, `/onboarding-member`, dan `/hapus-pesan` didaftarkan langsung ke server pada `WELCOME_CHANNEL_ID` saat startup. Periksa log `[SLASH]` atau `[SLASH ERROR]`. Pastikan aplikasi diundang dengan cakupan `bot` dan `applications.commands`, pengguna memiliki Use Application Commands, dan pengaturan Integrations mengizinkan role/channel terkait. Buka ulang Discord bila perlu. Perintah global lain tetap dipertahankan. Bila registrasi server gagal, command global lama dipertahankan.
+## Keterbatasan
 
-## Batasan dan pengujian
-
-Discord tidak memberi bot informasi tentang upaya kirim pesan yang ditolak, jadi bot tidak dapat memperingatkan setiap percobaan tersebut; welcome meminta member memilih role. `@everyone` adalah role dasar Discord. Izin khusus, Administrator, atau bot auto-role lain dapat mengubah akses; periksa dengan akun uji.
-
-**Jangan gunakan `/setup-server` untuk memperbarui bot:** perintah lama itu dapat menghapus/membuat ulang channel, riwayat, role, dan aturan AutoMod. Gunakan `/setup-komunitas` saja.
-
-Pengujian proyek berupa simulasi lokal, bukan pengujian langsung di server Discord/Render Anda. Uji dahulu dengan satu akun Owner dan satu akun member biasa.
+Bot tidak dapat mengetahui upaya kirim yang ditolak Discord; welcome mengingatkan pengguna untuk memilih role. `@everyone` adalah role dasar Discord; overwrite lain, Administrator dan bot lain dapat memengaruhi hasil. Izin channel privat tidak dapat menyembunyikan isi dari Administrator atau pemilik server. Periksa dengan akun uji biasa dan setiap server sebelum digunakan. Uji fitur reset, backup, role, form, izin command, aktivasi dan isolasi server secara langsung di lingkungan percobaan. Tidak ada jaminan bebas gangguan, penyalahgunaan, biaya, atau rate limit.

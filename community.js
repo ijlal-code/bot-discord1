@@ -15,13 +15,15 @@ const { MEMBER_CHANNEL, memberPanel, handleMemberInteraction } = require('./memb
 const CATEGORY = '🔐 KELOLA KOMUNITAS';
 const MANAGE = 'kelola-kategori';
 const MANAGE_CHANNEL = 'kelola-channel';
+const SLASH_CHANNEL = 'kelola-slash-command';
+const slashPanel = require('./slash-panel');
 const INBOX = 'terima-form';
 const FEEDBACK = 'feedback-and-request';
 const pending = new Map();
 const FLAGS = PermissionsBitField.Flags;
 
 function getOwnerRole(guild) {
-  const id = process.env.OWNER_ROLE_ID;
+  const id = null; // Role Owner ditentukan pada masing-masing server.
   if (id) {
     const role = guild.roles.cache.get(id);
     if (!role || role.id === guild.id || role.name === '@everyone') throw new Error('OWNER_ROLE_ID tidak valid.');
@@ -110,7 +112,7 @@ async function setupCommunity(guild, client) {
   else await category.permissionOverwrites.set(privatePerms, 'Amankan kategori kelola komunitas');
 
   const made = {};
-  for (const name of [MANAGE, MANAGE_CHANNEL, INBOX, SETTINGS_CHANNEL, MEMBER_CHANNEL, MESSAGE_CHANNEL]) {
+  for (const name of [MANAGE, MANAGE_CHANNEL, INBOX, SETTINGS_CHANNEL, MEMBER_CHANNEL, MESSAGE_CHANNEL, SLASH_CHANNEL]) {
     const matches = channels.filter(c => c && c.type === ChannelType.GuildText && c.parentId === category.id && c.name === name);
     if (matches.size > 1) throw new Error(`Kanal #${name} duplikat di kategori privat.`);
     let channel = matches.first();
@@ -118,6 +120,7 @@ async function setupCommunity(guild, client) {
     else await channel.permissionOverwrites.set(privatePerms, 'Amankan kanal pengelola');
     made[name] = channel;
   }
+  await ensurePanel(made[SLASH_CHANNEL], client, 'community:slash-open', slashPanel.panel(), true);
   // Panel kelola member dipasang bahkan ketika channel feedback belum tersedia.
   await ensurePanel(made[MESSAGE_CHANNEL], client, 'community:initial-open', messagePanel(), true);
   await ensurePanel(made[MEMBER_CHANNEL], client, 'community:member-edit', memberPanel(), true);
@@ -142,7 +145,7 @@ async function setupCommunity(guild, client) {
   let welcomeWarning = null;
   try { await suppressSystemWelcome(guild); }
   catch (error) { welcomeWarning = `Gagal menonaktifkan welcome sistem Discord: ${error.message}`; console.error('[WELCOME SYSTEM]', error.message); }
-  return { category, manage: made[MANAGE], manageChannels: made[MANAGE_CHANNEL], inbox: made[INBOX], welcome: made[SETTINGS_CHANNEL], member: made[MEMBER_CHANNEL], messageEditor: made[MESSAGE_CHANNEL], backups, feedback, feedbackWarning, welcomeWarning };
+  return { category, manage: made[MANAGE], manageChannels: made[MANAGE_CHANNEL], slash: made[SLASH_CHANNEL], inbox: made[INBOX], welcome: made[SETTINGS_CHANNEL], member: made[MEMBER_CHANNEL], messageEditor: made[MESSAGE_CHANNEL], backups, feedback, feedbackWarning, welcomeWarning };
 }
 function safePrivateChannel(channel, guild, client, owner) {
   const overwrites = channel.permissionOverwrites.cache;
@@ -220,6 +223,10 @@ async function handleCommunityInteraction(i, client, guildId) {
   if (!isOwner(i)) { await sendError(i, '⛔ Hanya anggota dengan role Owner yang dapat menggunakan fitur ini.'); return true; }
   if (await selection.intercept(i, p => handleCommunityInteraction(p, client, guildId))) return true;
   if (i.isButton() && id === 'community:cancel-selection') { await i.deferUpdate(); await i.deleteReply(); return true; }
+  if (id.startsWith('community:slash-')) {
+    if (i.channel?.name !== SLASH_CHANNEL || i.channel.parent?.name !== CATEGORY) { await sendError(i, 'Gunakan #kelola-slash-command.'); return true; }
+    await slashPanel.handle(i, client); return true;
+  }
   if (id.startsWith('community:backup-')) { await backup.handle(i, client, getOwnerRole); return true; }
   if (id.startsWith('community:initial-')) {
     if (!i.channel || i.channel.name !== MESSAGE_CHANNEL || i.channel.parent?.name !== CATEGORY) { await sendError(i, '⛔ Gunakan panel di #edit-pesan-channel-awal.'); return true; }

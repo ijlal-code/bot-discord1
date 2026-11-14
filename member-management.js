@@ -20,7 +20,6 @@ function memberPanel() {
     allowedMentions: { parse: [] } };
 }
 function ownerRoleId(guild) {
-  if (process.env.OWNER_ROLE_ID) return process.env.OWNER_ROLE_ID;
   const matches = guild.roles.cache.filter(r => r.id !== guild.id && r.name === 'Owner');
   if (matches.size !== 1) throw new Error('Role Owner tidak tersedia atau duplikat.');
   return matches.first().id;
