@@ -13,7 +13,7 @@ async function setup(guild,client,setupCommunity){
   let role=roles.find(r=>r.name===spec.name&&r.id!==guild.id);
   if(!role){
    // No privileged role permissions are granted by default on other people's servers.
-   role=await guild.roles.create({name:spec.name,color:spec.color,hoist:spec.hoist,permissions:[],reason:'Setup komunitas tanpa menghapus role lama'});
+   role=await guild.roles.create({name:spec.name,colors:{primaryColor:spec.color},hoist:spec.hoist,permissions:[],reason:'Setup komunitas tanpa menghapus role lama'});
    createdRoles.push(spec.name);
   }
   existingRoles[spec.name]=role;

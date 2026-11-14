@@ -3,6 +3,8 @@ const {Client,GatewayIntentBits,ActivityType,PermissionsBitField,MessageFlags,RE
 const {STATUS_ROLES,buildRulesAndRolePanel,handleRoleButtonInteraction}=require('./role');
 const {setup:setupServer}=require('./safe-setup');
 const {activateGuild}=require('./auto-activate');
+const {restoreAccess}=require('./restore-access');
+const {isDisabled}=require('./features');
 const {applyRoleLock,lockNewChannel}=require('./role-lock');
 const {setupCommunity,handleCommunityInteraction,isOwner,getOwnerRole,sendError}=require('./community');
 const {announceJoin,welcomeAfterRole,buildMemberOnboarding}=require('./welcome');
@@ -21,13 +23,19 @@ client.once('clientReady',async()=>{
  client.user.setActivity('komunitas', {type:ActivityType.Watching});
  try{const globalResult=await registerGlobal(rest,client.user.id);if(globalResult.errors.length)console.error('[SLASH GLOBAL] Sebagian registrasi gagal:',globalResult.errors.join('; '));}catch(e){console.error('[SLASH GLOBAL] Registrasi gagal:',e.message);}
  try{web.start(client,register);}catch(e){console.error('[CONFIG]',e.message);process.exit(1);}
- // Jangan mengubah role, channel, atau izin Discord secara otomatis saat startup.
+ // Pemulihan terbatas hanya pada overwrite bot di channel setup yang dikenali.
  console.log(`[INIT] ${state.active.size} server aktif dimuat.`);
- // Server yang sudah dinonaktifkan tidak diaktifkan ulang saat restart.
- for(const guild of client.guilds.cache.values()){try{await activateGuild(guild,register,{onlyNew:true});}catch(e){console.warn(`[AKTIVASI ${guild.id}] ${e.message}`);}}
+ // One guild at a time; only known bot setup channels are considered.
+ for(const guild of client.guilds.cache.values()){
+  try{
+   const record=await state.readConfig(guild.id);
+   if(!record || record.leftGuild) await activateGuild(guild,register,{onlyNew:!record});
+   if(state.get(guild.id)) {const result=await restoreAccess(guild,client);if(result.updated||result.skipped.length||result.errors.length)console.log(`[PEMULIHAN ${guild.id}] ${result.updated} diperbaiki; dilewati: ${result.skipped.join(', ')||'-'}; gagal: ${result.errors.join(', ')||'-'}`);}
+  }catch(e){console.warn(`[AKTIVASI ${guild.id}] ${e.message}`);}
+ }
 });
-client.on('guildCreate',async guild=>{if(!client.isReady())return;try{await activateGuild(guild,register);console.log(`[GUILD ${guild.id}] Terdaftar otomatis.`);}catch(e){console.error(`[GUILD ${guild.id}] Aktivasi gagal: ${e.message}`);}});
-client.on('guildDelete',async guild=>{if(state.get(guild.id))try{await state.deactivate(guild.id);console.log('[GUILD] Server dinonaktifkan setelah bot keluar.');}catch(e){console.error('[GUILD] Gagal menyimpan penonaktifan; periksa MongoDB.');}});
+client.on('guildCreate',async guild=>{if(!client.isReady())return;try{await activateGuild(guild,register);const result=await restoreAccess(guild,client);console.log(`[GUILD ${guild.id}] Terdaftar; izin dipulihkan: ${result.updated}; dilewati: ${result.skipped.join(', ')||'-'}; gagal: ${result.errors.join(', ')||'-'}`);}catch(e){console.error(`[GUILD ${guild.id}] Aktivasi atau pemulihan gagal: ${e.message}`);}});
+client.on('guildDelete',async guild=>{if(state.get(guild.id))try{await state.markLeft(guild.id);console.log('[GUILD] Bot keluar; pengaturan server disimpan untuk undangan ulang.');}catch(e){console.error('[GUILD] Gagal menyimpan status keluar; periksa MongoDB.');}});
 client.on('guildMemberAdd',async member=>{
  if(!state.get(member.guild.id)||member.user.bot)return;
  try{await announceJoin(member,client);}catch(e){console.error('[WELCOME]',e.message);}
@@ -44,6 +52,7 @@ client.on('interactionCreate',async i=>{
    return;
   }
   if(!i.isChatInputCommand())return;
+  if(isDisabled(state.get(i.guildId),i.commandName)){await i.reply({content:'Perintah ini sedang dinonaktifkan oleh pengelola layanan bot.',flags:MessageFlags.Ephemeral});return;}
   if(i.commandName==='onboarding-member'){
    const cfg=state.get(i.guildId);
    if(!isOwner(i)&&(!cfg.enabledMemberCommands?.includes('onboarding-member')||i.channelId!==cfg.discussionId)){await i.reply({content:'Perintah ini belum diaktifkan untuk member di channel ini.',flags:MessageFlags.Ephemeral});return;}

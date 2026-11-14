@@ -5,6 +5,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {PermissionsBitField,Routes}=require('discord.js');
 const state=require('./state');
+const {COMMANDS,validDisabled}=require('./features');
 const sessions=new Map(), oauthStates=new Map(), activating=new Set();
 const rand=()=>crypto.randomBytes(32).toString('base64url');
 let base, client, register;
@@ -58,6 +59,19 @@ async function handler(req,res){
    const guilds=Array.from(client.guilds.cache.values()).map(g=>({id:g.id,name:g.name,active:!!state.get(g.id)}));
    guilds.sort((a,b)=>a.name.localeCompare(b.name,'id')||a.id.localeCompare(b.id));
    s.guildCache={guilds,expires:Date.now()+30000};return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds,platformAdmin:true,inviteUrl:inviteUrl()});
+  }
+  if((req.method==='GET'||req.method==='POST')&&p==='/api/features'){
+   const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});
+   if(s.kind!=='dashboard'||!await isPlatformAdmin(s.user.id))return json(res,403,{error:'Dashboard hanya untuk pemilik aplikasi bot.'});
+   if(req.method==='POST'&&(req.headers.origin!==base||req.headers['x-csrf-token']!==s.csrf))return json(res,403,{error:'Permintaan ditolak.'});
+   const data=req.method==='POST'?await body(req):{guildId:url.searchParams.get('guildId')};
+   if(typeof data.guildId!=='string'||!/^\d{15,22}$/.test(data.guildId))return json(res,400,{error:'ID server tidak valid.'});
+   if(!client.guilds.cache.has(data.guildId))return json(res,404,{error:'Bot tidak berada di server tersebut.'});
+   const config=await state.readConfig(data.guildId);if(!config)return json(res,409,{error:'Server belum terdaftar. Aktifkan server terlebih dahulu.'});
+   if(req.method==='GET')return json(res,200,{commands:COMMANDS,disabledCommands:config.disabledCommands||[]});
+   if(!validDisabled(data.disabledCommands))return json(res,400,{error:'Pilihan perintah tidak valid.'});
+   const now=Date.now();s.featureOps=(s.featureOps||[]).filter(t=>now-t<60000);if(s.featureOps.length>=10)return json(res,429,{error:'Terlalu banyak permintaan. Coba lagi nanti.'});s.featureOps.push(now);
+   await state.setDisabled(data.guildId,data.disabledCommands);return json(res,200,{ok:true});
   }
   if(req.method==='POST'&&(p==='/api/activate'||p==='/api/deactivate')){
    const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});
