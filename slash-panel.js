@@ -4,7 +4,7 @@ const state = require('./state');
 const auth = require('./web-auth');
 const rows=(...x)=>new ActionRowBuilder().addComponents(...x);
 const pending=new Map(), applying=new Set();
-function panel(){return {embeds:[new EmbedBuilder().setColor(0x2873c9).setTitle('Akses slash command untuk member').setDescription('Pilih perintah yang aman untuk member di #diskusi. Perintah pengelola dan reset tetap khusus pengelola.\n\nSebelum menyimpan, login Discord di dashboard agar bot mendapatkan izin perubahan command. Pengaturan akan **mengganti overwrite perintah tersebut** di Integrations.')],components:[rows(new ButtonBuilder().setCustomId('community:slash-open').setLabel('Pilih perintah').setStyle(ButtonStyle.Primary))],allowedMentions:{parse:[]}};}
+function panel(){return {embeds:[new EmbedBuilder().setColor(0x2873c9).setTitle('Akses slash command untuk member').setDescription('Pilih perintah yang aman untuk member di #diskusi. Perintah pengelola dan reset tetap khusus pengelola.\n\nSebelum menyimpan, otorisasi Discord melalui link yang diberikan bot agar bot mendapatkan izin perubahan command. Pengaturan akan **mengganti overwrite perintah tersebut** di Integrations.')],components:[rows(new ButtonBuilder().setCustomId('community:slash-open').setLabel('Pilih perintah').setStyle(ButtonStyle.Primary))],allowedMentions:{parse:[]}};}
 async function handle(i,client){
  const id=i.customId;
  if(id==='community:slash-open'&&i.isButton()){
@@ -21,7 +21,7 @@ async function handle(i,client){
  if(id==='community:slash-apply'&&i.isButton()){
   const key=`${i.guildId}:${i.user.id}:${i.message.id}`, choice=pending.get(key);
   if(!choice||choice.expires<Date.now())return i.reply({content:'Pilihan kedaluwarsa; buka panel lagi.',flags:MessageFlags.Ephemeral});
-  const token=auth.tokenFor(i.user.id);if(!token)return i.reply({content:`Login Discord di dashboard terlebih dahulu, lalu tekan Terapkan lagi: ${process.env.DASHBOARD_URL}`,flags:MessageFlags.Ephemeral});
+  const token=auth.tokenFor(i.user.id);if(!token)return i.reply({content:`Otorisasi Discord untuk mengubah izin command, lalu kembali tekan Terapkan: ${process.env.DASHBOARD_URL}/auth/permissions`,flags:MessageFlags.Ephemeral});
   if(applying.has(i.guildId))return i.reply({content:'Pengaturan lain sedang diproses. Coba lagi.',flags:MessageFlags.Ephemeral});
   applying.add(i.guildId);
   try{

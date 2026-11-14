@@ -3,15 +3,24 @@ const http=require('node:http');
 const crypto=require('node:crypto');
 const fs=require('node:fs');
 const path=require('node:path');
-const {PermissionsBitField}=require('discord.js');
+const {PermissionsBitField,Routes}=require('discord.js');
 const state=require('./state');
 const sessions=new Map(), oauthStates=new Map(), activating=new Set();
 const rand=()=>crypto.randomBytes(32).toString('base64url');
 let base, client, register;
+let ownerCache=null;
+// Discord itself is authoritative. Missing owner data or an API error fails closed.
+async function applicationOwnerId(){
+ if(ownerCache && ownerCache.expires>Date.now())return ownerCache.id;
+ const app=await client.rest.get(Routes.currentApplication());
+ const id=app.team ? app.team.owner_user_id : app.owner?.id;
+ if(app.id!==client.user.id || typeof id!=='string' || !/^\d{15,22}$/.test(id))throw Error('Identitas pemilik aplikasi tidak tersedia dari Discord.');
+ ownerCache={id,expires:Date.now()+30000};return id;
+}
+async function isPlatformAdmin(userId){return userId===await applicationOwnerId();}
 function expire(){const now=Date.now();for(const [k,v] of sessions)if(v.expires<=now)sessions.delete(k);for(const [k,v] of oauthStates)if(v.expires<=now)oauthStates.delete(k);}
 function cookie(req,name){const match=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='));return match?.slice(name.length+1);}
-function tokenFor(userId){expire();let found;for(const s of sessions.values())if(s.user.id===userId&&(!found||s.expires>found.expires))found=s;return found?.token;}
-function isPlatformAdmin(userId){return !!process.env.DASHBOARD_ADMIN_ID && userId===process.env.DASHBOARD_ADMIN_ID.trim();}
+function tokenFor(userId){expire();let found;for(const s of sessions.values())if(s.kind==='permission'&&s.user.id===userId&&(!found||s.expires>found.expires))found=s;return found?.token;}
 function inviteUrl(){const flags=PermissionsBitField.Flags;const bits=flags.ViewChannel|flags.ReadMessageHistory|flags.SendMessages|flags.EmbedLinks|flags.AttachFiles|flags.AddReactions|flags.ManageChannels|flags.ManageRoles|flags.ManageMessages|flags.ManageGuild;const q=new URLSearchParams({client_id:client.user.id,scope:'bot applications.commands',permissions:bits.toString()});return 'https://discord.com/oauth2/authorize?'+q;}
 function canManage(guild,member){if(guild.ownerId&&member.id&&guild.ownerId===member.id)return true;const matches=guild.roles.cache.filter(r=>r.name==='Owner'&&r.id!==guild.id);if(matches.size!==1||!member.roles.cache.has(matches.first().id))return false;return guild.ownerId===member.id || member.permissions.has([PermissionsBitField.Flags.ManageGuild,PermissionsBitField.Flags.ManageRoles]);}
 function headers(res,code,type='application/json'){res.writeHead(code,{'Content-Type':`${type}; charset=utf-8`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});}
@@ -25,48 +34,38 @@ async function handler(req,res){
   const url=new URL(req.url,base);const p=url.pathname;
   if(req.method==='GET' && ['/','/app.js','/style.css'].includes(p)){const f=p==='/'?'index.html':p.slice(1);headers(res,200,f.endsWith('.html')?'text/html':f.endsWith('.js')?'text/javascript':'text/css');return res.end(fs.readFileSync(path.join(__dirname,'public',f)));}
   if(req.method==='GET'&&p==='/health'){return json(res,200,{status:client.isReady()?'online':'starting',uptimeSeconds:Math.floor(process.uptime())});}
-  if(req.method==='GET'&&p==='/auth/discord'){
+  if(req.method==='GET'&&(p==='/auth/discord'||p==='/auth/permissions')){
    expire();if(oauthStates.size>500)return json(res,429,{error:'Terlalu banyak permintaan login.'});
-   const nonce=rand();oauthStates.set(nonce,{expires:Date.now()+300000});
-   const params=new URLSearchParams({client_id:process.env.DISCORD_CLIENT_ID,response_type:'code',redirect_uri:base+'/auth/callback',scope:'identify guilds applications.commands.permissions.update',state:nonce});
+   const nonce=rand(),kind=p==='/auth/permissions'?'permission':'dashboard';oauthStates.set(nonce,{kind,expires:Date.now()+300000});
+   const params=new URLSearchParams({client_id:process.env.DISCORD_CLIENT_ID,response_type:'code',redirect_uri:base+'/auth/callback',scope:kind==='permission'?'identify applications.commands.permissions.update':'identify',state:nonce});
    return redirect(res,'https://discord.com/oauth2/authorize?'+params,`oauth_state=${nonce}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=300`);
   }
   if(req.method==='GET'&&p==='/auth/callback'){
-   const nonce=url.searchParams.get('state'), expected=cookie(req,'oauth_state');if(!nonce||nonce!==expected||!oauthStates.has(nonce)||oauthStates.get(nonce).expires<Date.now())return json(res,400,{error:'Login kedaluwarsa atau state tidak cocok.'});oauthStates.delete(nonce);
+   const nonce=url.searchParams.get('state'), expected=cookie(req,'oauth_state');if(!nonce||nonce!==expected||!oauthStates.has(nonce)||oauthStates.get(nonce).expires<Date.now())return json(res,400,{error:'Login kedaluwarsa atau state tidak cocok.'});const kind=oauthStates.get(nonce).kind;oauthStates.delete(nonce);
    const code=url.searchParams.get('code');if(!code)return json(res,400,{error:'Login dibatalkan.'});
    const r=await fetch('https://discord.com/api/v10/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:process.env.DISCORD_CLIENT_ID,client_secret:process.env.DISCORD_CLIENT_SECRET,grant_type:'authorization_code',code,redirect_uri:base+'/auth/callback'}),signal:AbortSignal.timeout(10000)});
    if(!r.ok)throw Error('Discord menolak login. Periksa konfigurasi OAuth.');const t=await r.json(); const user=await api(t.access_token,'/users/@me');
-   if(!user.id||!t.scope?.split(' ').includes('applications.commands.permissions.update'))throw Error('Izin OAuth diperlukan.');
-   expire();if(sessions.size>1000)throw Error('Kapasitas sesi penuh.');const sid=rand();sessions.set(sid,{user,token:t.access_token,csrf:rand(),expires:Date.now()+Math.max(0,Math.min(t.expires_in,3600)-60)*1000});
+   if(!user.id || !t.scope?.split(' ').includes('identify') || (kind==='permission'&&!t.scope.split(' ').includes('applications.commands.permissions.update')))throw Error('Izin OAuth diperlukan.');
+   if(kind==='dashboard' && !await isPlatformAdmin(user.id))return json(res,403,{error:'Dashboard hanya untuk pemilik aplikasi bot di Discord Developer Portal. Masuk dengan akun yang benar.'});
+   expire();if(sessions.size>=1000)throw Error('Kapasitas sesi penuh.');const sid=rand();sessions.set(sid,{kind,user,token:kind==='permission'?t.access_token:undefined,csrf:rand(),expires:Date.now()+Math.max(0,Math.min(t.expires_in,3600)-60)*1000});
+   if(kind==='permission'){headers(res,200,'text/plain');return res.end('Otorisasi izin command berhasil. Kembali ke Discord dan tekan Terapkan. Otorisasi sementara, bukan akses dashboard.');}
    return redirect(res,'/',`sid=${sid}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=3500`);
   }
   if(req.method==='GET'&&p==='/api/me'){
    const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});
-   if(s.guildCache && s.guildCache.expires>Date.now())return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds:s.guildCache.guilds,platformAdmin:isPlatformAdmin(s.user.id),inviteUrl:inviteUrl()});
-   let guilds=[];
-   if(isPlatformAdmin(s.user.id)){
-    guilds=Array.from(client.guilds.cache.values()).map(g=>({id:g.id,name:g.name,active:!!state.get(g.id)}));
-   }else{
-    const list=await api(s.token,'/users/@me/guilds?limit=200');
-    for(const g of list){
-     const botGuild=client.guilds.cache.get(g.id);if(!botGuild)continue;
-     try{
-      if(botGuild.ownerId===s.user.id){guilds.push({id:g.id,name:g.name,active:!!state.get(g.id)});continue;}
-      const bits=BigInt(g.permissions||'0');const need=PermissionsBitField.Flags.ManageGuild|PermissionsBitField.Flags.ManageRoles;
-      if(!(bits&PermissionsBitField.Flags.Administrator)&&(bits&need)!==need)continue;
-      await botGuild.roles.fetch();const member=await botGuild.members.fetch({user:s.user.id,force:true});if(canManage(botGuild,member))guilds.push({id:g.id,name:g.name,active:!!state.get(g.id)});
-     }catch{}
-    }
-   }
+   if(s.kind!=='dashboard'||!await isPlatformAdmin(s.user.id))return json(res,403,{error:'Dashboard hanya untuk pemilik aplikasi bot.'});
+   if(s.guildCache && s.guildCache.expires>Date.now())return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds:s.guildCache.guilds,platformAdmin:true,inviteUrl:inviteUrl()});
+   const guilds=Array.from(client.guilds.cache.values()).map(g=>({id:g.id,name:g.name,active:!!state.get(g.id)}));
    guilds.sort((a,b)=>a.name.localeCompare(b.name,'id')||a.id.localeCompare(b.id));
-   s.guildCache={guilds,expires:Date.now()+30000};return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds,platformAdmin:isPlatformAdmin(s.user.id),inviteUrl:inviteUrl()});
+   s.guildCache={guilds,expires:Date.now()+30000};return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds,platformAdmin:true,inviteUrl:inviteUrl()});
   }
   if(req.method==='POST'&&(p==='/api/activate'||p==='/api/deactivate')){
    const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});
    if(req.headers.origin!==base||req.headers['x-csrf-token']!==s.csrf)return json(res,403,{error:'Permintaan ditolak.'});
+   if(s.kind!=='dashboard'||!await isPlatformAdmin(s.user.id))return json(res,403,{error:'Dashboard hanya untuk pemilik aplikasi bot.'});
    const now=Date.now();s.operations=(s.operations||[]).filter(t=>now-t<60000);if(s.operations.length>=5)return json(res,429,{error:'Terlalu banyak permintaan. Coba lagi nanti.'});s.operations.push(now);
    const {guildId}=await body(req);if(typeof guildId!=='string'||!/^\d{15,22}$/.test(guildId))return json(res,400,{error:'ID server tidak valid.'});
-   const guild=client.guilds.cache.get(guildId);if(!guild)return json(res,404,{error:'Bot belum ada di server ini atau ID salah.'});if(!isPlatformAdmin(s.user.id)&&guild.ownerId!==s.user.id){await guild.roles.fetch();const member=await guild.members.fetch({user:s.user.id,force:true}).catch(()=>null);if(!member||!canManage(guild,member))return json(res,403,{error:'Akun harus menjadi pemilik server atau memiliki role Owner serta Manage Server dan Manage Roles.'});}
+   const guild=client.guilds.cache.get(guildId);if(!guild)return json(res,404,{error:'Bot belum ada di server ini atau ID salah.'});
    if(activating.has(guildId))return json(res,429,{error:'Pengaturan server sedang diproses.'});activating.add(guildId);try{if(p==='/api/deactivate'){if(!state.get(guildId))return json(res,404,{error:'Server belum aktif.'});await state.deactivate(guildId);s.guildCache=null;return json(res,200,{ok:true});}const result=await register(guildId);if(result.errors.length)return json(res,502,{error:'Registrasi command gagal; periksa log Render.'});await state.activate(guildId);s.guildCache=null;return json(res,200,{ok:true});}finally{activating.delete(guildId);}
   }
   if(req.method==='POST'&&p==='/api/logout'){const s=sess(req);if(!s||req.headers.origin!==base||req.headers['x-csrf-token']!==s.csrf)return json(res,403,{error:'Permintaan ditolak.'});sessions.delete(cookie(req,'sid'));return json(res,200,{ok:true});}
@@ -74,7 +73,7 @@ async function handler(req,res){
  }catch(e){console.error('[WEB]',e.message);if(!res.headersSent)json(res,500,{error:'Proses gagal. Periksa konfigurasi atau coba login ulang.'});else res.end();}
 }
 function start(discordClient,registerFn){
- client=discordClient;register=registerFn;
+ client=discordClient;register=registerFn;ownerCache=null;
  if(!process.env.DISCORD_CLIENT_ID||!process.env.DISCORD_CLIENT_SECRET||!process.env.DASHBOARD_URL)throw Error('DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, dan DASHBOARD_URL wajib diatur.');
  const u=new URL(process.env.DASHBOARD_URL);if(u.protocol!=='https:'||u.pathname!=='/'||u.search||u.hash||u.username||u.password)throw Error('DASHBOARD_URL harus origin HTTPS tanpa path.');base=u.origin;
  if(client.user.id!==process.env.DISCORD_CLIENT_ID)throw Error('DISCORD_CLIENT_ID tidak cocok dengan bot token.');
