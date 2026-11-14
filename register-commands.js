@@ -9,7 +9,7 @@ function definitions(){
    locked(new SlashCommandBuilder().setName('onboarding-member').setDescription('Tampilkan onboarding satu member di #diskusi').addUserOption(o=>o.setName('member').setDescription('Member yang ingin ditampilkan').setRequired(true)))
   ],
   global:[
-   locked(new SlashCommandBuilder().setName('setup-server').setDescription('Reset dan bangun ulang server (menghapus data)')),
+   locked(new SlashCommandBuilder().setName('setup-server').setDescription('Siapkan role dan struktur komunitas tanpa menghapus data')),
    locked(new SlashCommandBuilder().setName('kunci-chat').setDescription('Terapkan izin wajib memilih role')),
    locked(new SlashCommandBuilder().setName('panel-role').setDescription('Kirim panel pilihan role'))
   ]

@@ -11,7 +11,9 @@ let base, client, register;
 function expire(){const now=Date.now();for(const [k,v] of sessions)if(v.expires<=now)sessions.delete(k);for(const [k,v] of oauthStates)if(v.expires<=now)oauthStates.delete(k);}
 function cookie(req,name){const match=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='));return match?.slice(name.length+1);}
 function tokenFor(userId){expire();let found;for(const s of sessions.values())if(s.user.id===userId&&(!found||s.expires>found.expires))found=s;return found?.token;}
-function canManage(guild,member){const matches=guild.roles.cache.filter(r=>r.name==='Owner'&&r.id!==guild.id);if(matches.size!==1||!member.roles.cache.has(matches.first().id))return false;return guild.ownerId===member.id || member.permissions.has([PermissionsBitField.Flags.ManageGuild,PermissionsBitField.Flags.ManageRoles]);}
+function isPlatformAdmin(userId){return !!process.env.DASHBOARD_ADMIN_ID && userId===process.env.DASHBOARD_ADMIN_ID.trim();}
+function inviteUrl(){const flags=PermissionsBitField.Flags;const bits=flags.ViewChannel|flags.ReadMessageHistory|flags.SendMessages|flags.EmbedLinks|flags.AttachFiles|flags.AddReactions|flags.ManageChannels|flags.ManageRoles|flags.ManageMessages|flags.ManageGuild;const q=new URLSearchParams({client_id:client.user.id,scope:'bot applications.commands',permissions:bits.toString()});return 'https://discord.com/oauth2/authorize?'+q;}
+function canManage(guild,member){if(guild.ownerId&&member.id&&guild.ownerId===member.id)return true;const matches=guild.roles.cache.filter(r=>r.name==='Owner'&&r.id!==guild.id);if(matches.size!==1||!member.roles.cache.has(matches.first().id))return false;return guild.ownerId===member.id || member.permissions.has([PermissionsBitField.Flags.ManageGuild,PermissionsBitField.Flags.ManageRoles]);}
 function headers(res,code,type='application/json'){res.writeHead(code,{'Content-Type':`${type}; charset=utf-8`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});}
 function json(res,code,obj){headers(res,code);res.end(JSON.stringify(obj));}
 function redirect(res,url,cookieValue){res.writeHead(302,{'Location':url,'Cache-Control':'no-store','Referrer-Policy':'no-referrer',...(cookieValue?{'Set-Cookie':cookieValue}:{})});res.end();}
@@ -40,17 +42,31 @@ async function handler(req,res){
   }
   if(req.method==='GET'&&p==='/api/me'){
    const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});
-   if(s.guildCache && s.guildCache.expires>Date.now())return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds:s.guildCache.guilds});
-   const list=await api(s.token,'/users/@me/guilds');let guilds=[];
-   for(const g of list.slice(0,50)){const botGuild=client.guilds.cache.get(g.id);if(!botGuild)continue;try{await botGuild.roles.fetch();const member=await botGuild.members.fetch({user:s.user.id,force:true});if(canManage(botGuild,member))guilds.push({id:g.id,name:g.name,active:!!state.get(g.id)});}catch{}}
-   s.guildCache={guilds,expires:Date.now()+30000};return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds});
+   if(s.guildCache && s.guildCache.expires>Date.now())return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds:s.guildCache.guilds,platformAdmin:isPlatformAdmin(s.user.id),inviteUrl:inviteUrl()});
+   let guilds=[];
+   if(isPlatformAdmin(s.user.id)){
+    guilds=Array.from(client.guilds.cache.values()).map(g=>({id:g.id,name:g.name,active:!!state.get(g.id)}));
+   }else{
+    const list=await api(s.token,'/users/@me/guilds?limit=200');
+    for(const g of list){
+     const botGuild=client.guilds.cache.get(g.id);if(!botGuild)continue;
+     try{
+      if(botGuild.ownerId===s.user.id){guilds.push({id:g.id,name:g.name,active:!!state.get(g.id)});continue;}
+      const bits=BigInt(g.permissions||'0');const need=PermissionsBitField.Flags.ManageGuild|PermissionsBitField.Flags.ManageRoles;
+      if(!(bits&PermissionsBitField.Flags.Administrator)&&(bits&need)!==need)continue;
+      await botGuild.roles.fetch();const member=await botGuild.members.fetch({user:s.user.id,force:true});if(canManage(botGuild,member))guilds.push({id:g.id,name:g.name,active:!!state.get(g.id)});
+     }catch{}
+    }
+   }
+   guilds.sort((a,b)=>a.name.localeCompare(b.name,'id')||a.id.localeCompare(b.id));
+   s.guildCache={guilds,expires:Date.now()+30000};return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds,platformAdmin:isPlatformAdmin(s.user.id),inviteUrl:inviteUrl()});
   }
   if(req.method==='POST'&&(p==='/api/activate'||p==='/api/deactivate')){
    const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});
    if(req.headers.origin!==base||req.headers['x-csrf-token']!==s.csrf)return json(res,403,{error:'Permintaan ditolak.'});
    const now=Date.now();s.operations=(s.operations||[]).filter(t=>now-t<60000);if(s.operations.length>=5)return json(res,429,{error:'Terlalu banyak permintaan. Coba lagi nanti.'});s.operations.push(now);
    const {guildId}=await body(req);if(typeof guildId!=='string'||!/^\d{15,22}$/.test(guildId))return json(res,400,{error:'ID server tidak valid.'});
-   const guild=client.guilds.cache.get(guildId);if(!guild)return json(res,404,{error:'Bot belum ada di server ini.'});await guild.roles.fetch();const member=await guild.members.fetch({user:s.user.id,force:true});if(!canManage(guild,member))return json(res,403,{error:'Anda perlu role Owner dan izin mengelola server serta role.'});
+   const guild=client.guilds.cache.get(guildId);if(!guild)return json(res,404,{error:'Bot belum ada di server ini atau ID salah.'});if(!isPlatformAdmin(s.user.id)&&guild.ownerId!==s.user.id){await guild.roles.fetch();const member=await guild.members.fetch({user:s.user.id,force:true}).catch(()=>null);if(!member||!canManage(guild,member))return json(res,403,{error:'Akun harus menjadi pemilik server atau memiliki role Owner serta Manage Server dan Manage Roles.'});}
    if(activating.has(guildId))return json(res,429,{error:'Pengaturan server sedang diproses.'});activating.add(guildId);try{if(p==='/api/deactivate'){if(!state.get(guildId))return json(res,404,{error:'Server belum aktif.'});await state.deactivate(guildId);s.guildCache=null;return json(res,200,{ok:true});}const result=await register(guildId);if(result.errors.length)return json(res,502,{error:'Registrasi command gagal; periksa log Render.'});await state.activate(guildId);s.guildCache=null;return json(res,200,{ok:true});}finally{activating.delete(guildId);}
   }
   if(req.method==='POST'&&p==='/api/logout'){const s=sess(req);if(!s||req.headers.origin!==base||req.headers['x-csrf-token']!==s.csrf)return json(res,403,{error:'Permintaan ditolak.'});sessions.delete(cookie(req,'sid'));return json(res,200,{ok:true});}

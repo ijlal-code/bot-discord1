@@ -23,17 +23,12 @@ const pending = new Map();
 const FLAGS = PermissionsBitField.Flags;
 
 function getOwnerRole(guild) {
-  const id = null; // Role Owner ditentukan pada masing-masing server.
-  if (id) {
-    const role = guild.roles.cache.get(id);
-    if (!role || role.id === guild.id || role.name === '@everyone') throw new Error('OWNER_ROLE_ID tidak valid.');
-    return role;
-  }
   const roles = guild.roles.cache.filter(r => r.name === 'Owner' && r.id !== guild.id);
-  if (roles.size !== 1) throw new Error('Role Owner harus ada tepat satu, atau atur OWNER_ROLE_ID.');
+  if (roles.size !== 1) throw new Error('Role Owner harus ada tepat satu.');
   return roles.first();
 }
 function isOwner(interaction) {
+  if (interaction.guild?.ownerId && interaction.user?.id && interaction.user.id === interaction.guild.ownerId) return true;
   try { return !!interaction.member?.roles?.cache?.has(getOwnerRole(interaction.guild).id); }
   catch { return false; }
 }

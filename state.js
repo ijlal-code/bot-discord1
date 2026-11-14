@@ -13,6 +13,7 @@ async function init() {
  for (const r of records) active.set(r.guildId, r);
 }
 function get(id) { return active.get(id); }
+async function exists(id){return !!await collection.findOne({guildId:id},{projection:{_id:1}});}
 async function activate(id) {
  if(!active.has(id)&&active.size>=1000)throw Error('Batas 1000 server aktif tercapai.');
  await collection.updateOne({guildId:id}, {$set:{enabled:true,updatedAt:new Date()},$setOnInsert:{enabledMemberCommands:[],discussionId:null}}, {upsert:true});
@@ -25,4 +26,4 @@ async function select(id, enabled, channel) {
 }
 async function deactivate(id){active.delete(id);await collection.updateOne({guildId:id},{$set:{enabled:false,enabledMemberCommands:[],discussionId:null,updatedAt:new Date()}});}
 async function close(){await connection?.close();}
-module.exports={init,get,activate,deactivate,select,close,active};
+module.exports={init,get,exists,activate,deactivate,select,close,active};
