@@ -5,6 +5,7 @@ const {setup:setupServer}=require('./safe-setup');
 const {activateGuild}=require('./auto-activate');
 const {restoreAccess}=require('./restore-access');
 const {isDisabled}=require('./features');
+const {handleSetup}=require('./setup-command');
 const {applyRoleLock,lockNewChannel}=require('./role-lock');
 const {setupCommunity,handleCommunityInteraction,isOwner,getOwnerRole,sendError}=require('./community');
 const {announceJoin,welcomeAfterRole,buildMemberOnboarding}=require('./welcome');
@@ -30,11 +31,11 @@ client.once('clientReady',async()=>{
   try{
    const record=await state.readConfig(guild.id);
    if(!record || record.leftGuild) await activateGuild(guild,register,{onlyNew:!record});
-   if(state.get(guild.id)) {const result=await restoreAccess(guild,client);if(result.updated||result.skipped.length||result.errors.length)console.log(`[PEMULIHAN ${guild.id}] ${result.updated} diperbaiki; dilewati: ${result.skipped.join(', ')||'-'}; gagal: ${result.errors.join(', ')||'-'}`);}
+   if(state.get(guild.id)) {const result=await restoreAccess(guild,client);console.log(`[PEMULIHAN ${guild.id}] ${result.updated} diubah; ${result.verified}/${result.checked} akses terverifikasi; dilewati: ${result.skipped.join(' | ')||'-'}; gagal: ${result.errors.join(' | ')||'-'}`);}
   }catch(e){console.warn(`[AKTIVASI ${guild.id}] ${e.message}`);}
  }
 });
-client.on('guildCreate',async guild=>{if(!client.isReady())return;try{await activateGuild(guild,register);const result=await restoreAccess(guild,client);console.log(`[GUILD ${guild.id}] Terdaftar; izin dipulihkan: ${result.updated}; dilewati: ${result.skipped.join(', ')||'-'}; gagal: ${result.errors.join(', ')||'-'}`);}catch(e){console.error(`[GUILD ${guild.id}] Aktivasi atau pemulihan gagal: ${e.message}`);}});
+client.on('guildCreate',async guild=>{if(!client.isReady())return;try{await activateGuild(guild,register);const result=await restoreAccess(guild,client);console.log(`[GUILD ${guild.id}] Terdaftar; diubah: ${result.updated}; terverifikasi: ${result.verified}/${result.checked}; dilewati: ${result.skipped.join(', ')||'-'}; gagal: ${result.errors.join(', ')||'-'}`);}catch(e){console.error(`[GUILD ${guild.id}] Aktivasi atau pemulihan gagal: ${e.message}`);}});
 client.on('guildDelete',async guild=>{if(state.get(guild.id))try{await state.markLeft(guild.id);console.log('[GUILD] Bot keluar; pengaturan server disimpan untuk undangan ulang.');}catch(e){console.error('[GUILD] Gagal menyimpan status keluar; periksa MongoDB.');}});
 client.on('guildMemberAdd',async member=>{
  if(!state.get(member.guild.id)||member.user.bot)return;
@@ -42,8 +43,14 @@ client.on('guildMemberAdd',async member=>{
 });
 client.on('interactionCreate',async i=>{
  try{
+  // The setup component collector owns these replies, even while the guild is inactive.
+  if(i.isButton() && ['recover-safe-setup','confirm-safe-setup','cancel-safe-setup'].includes(i.customId))return;
+  // The real guild owner can use setup to recover an inactive guild; feature switches still apply.
+  if(i.guild && i.isChatInputCommand() && i.commandName==='setup-server'){
+   await handleSetup(i,{client,state,register,activateGuild,restoreAccess,setupServer,setupCommunity,isOwner,running:setupRunning});return;
+  }
   if(!i.guild || !state.get(i.guildId)){
-   if(i.isChatInputCommand()||i.isMessageComponent()||i.isModalSubmit())await i.reply({content:'Server belum aktif. Tunggu aktivasi otomatis atau minta pengelola mengaktifkan ulang di dashboard.',flags:MessageFlags.Ephemeral}).catch(()=>{});
+   if(i.isChatInputCommand()||i.isMessageComponent()||i.isModalSubmit())await i.reply({content:'Server belum aktif. Pemilik server dapat menjalankan /setup-server lalu memilih Pulihkan akses, atau pengelola layanan dapat mengaktifkannya di dashboard.',flags:MessageFlags.Ephemeral}).catch(()=>{});
    return;
   }
   if(i.customId?.startsWith('community:')){await handleCommunityInteraction(i,client,i.guildId);return;}
@@ -66,17 +73,6 @@ client.on('interactionCreate',async i=>{
    return;
   }
   if(!i.memberPermissions?.has(PermissionsBitField.Flags.Administrator)){await i.reply({content:'Perintah ini memerlukan role Owner dan izin Administrator.',flags:MessageFlags.Ephemeral});return;}
-  if(i.commandName==='setup-server'){
-   if(setupRunning.has(i.guildId)){await i.reply({content:'Setup sedang berjalan di server ini.',flags:MessageFlags.Ephemeral});return;}
-   const controls=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('confirm-safe-setup').setLabel('Lanjutkan setup').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('cancel-safe-setup').setLabel('Batal').setStyle(ButtonStyle.Secondary));
-   await i.reply({content:'Setup akan membuat role, kategori, dan channel yang belum ada serta mencoba memberikan role Owner kepada pemilik. Data lama tidak dihapus. **Izin khusus kategori/channel kelola, backup dan #feedback-and-request akan diganti, serta welcome sistem Discord diubah**; periksa terlebih dahulu.',components:[controls],flags:MessageFlags.Ephemeral});
-   const msg=await i.fetchReply();let confirmation;
-   try{confirmation=await msg.awaitMessageComponent({componentType:ComponentType.Button,time:60000,filter:x=>x.user.id===i.user.id&&['confirm-safe-setup','cancel-safe-setup'].includes(x.customId)});}catch{await i.editReply({content:'Konfirmasi kedaluwarsa; setup tidak dilakukan.',components:[]}).catch(()=>{});return;}
-   if(confirmation.customId==='cancel-safe-setup'){await confirmation.update({content:'Setup dibatalkan.',components:[]});return;}
-   if(!state.get(i.guildId)||!isOwner(confirmation)||!confirmation.memberPermissions?.has(PermissionsBitField.Flags.Administrator)||setupRunning.has(i.guildId)){await confirmation.update({content:'Setup dibatalkan: akses berubah atau setup sedang berjalan.',components:[]});return;}
-   setupRunning.add(i.guildId);
-   try{await confirmation.update({content:'Setup sedang berjalan. Jangan hentikan bot.',components:[]});const x=await setupServer(i.guild,client,setupCommunity);const info=`Selesai: ${x.createdRoles.length} role dan ${x.createdChannels.length} channel baru. ${x.warnings.join(' ')} Channel lama tidak diubah selain izin kelola, backup, feedback, dan pengaturan welcome sistem Discord.`;await i.followUp({content:info.slice(0,1900),flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});}catch(e){await i.followUp({content:'Setup belum selesai: '+e.message,flags:MessageFlags.Ephemeral});}finally{setupRunning.delete(i.guildId);}return;
-  }
   if(i.commandName==='kunci-chat'){
    await i.deferReply({flags:MessageFlags.Ephemeral});try{const x=await applyRoleLock(i.guild,client);await i.editReply(`Penguncian: ${x.checked} channel, ${x.errors.length} gagal.`);}catch(e){await i.editReply('Penguncian gagal: '+e.message);}return;
   }

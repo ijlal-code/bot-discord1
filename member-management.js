@@ -134,7 +134,7 @@ async function handleMemberCommand(i, client, guildId, { isOwner, statusRoles, b
     await i.editReply('✅ Onboarding member telah ditampilkan di #diskusi.');
   } catch (error) {
     console.error('[ONBOARDING MEMBER ERROR]', error);
-    await i.editReply(error.code === 50013 || /Missing Permissions/i.test(error.message || '') ? '❌ Bot belum memiliki izin yang diperlukan. Minta pemilik server memeriksa View Channel, Read Message History, Send Messages dan Embed Links untuk bot di #diskusi, #kelola-member dan #kelola-embed-welcome-member. Jika bot baru diundang ulang, periksa juga Manage Roles dan Manage Channels; lihat log pemulihan.' : `❌ Tidak dapat menampilkan onboarding: ${error.message}`);
+    await i.editReply([50001, 50013].includes(error.code) || /Missing (Access|Permissions)/i.test(error.message || '') ? '❌ Bot belum memiliki izin yang diperlukan. Minta pemilik server memeriksa View Channel, Read Message History, Send Messages dan Embed Links untuk bot di #diskusi, #kelola-member dan #kelola-embed-welcome-member. Jika bot baru diundang ulang, periksa juga Manage Roles dan Manage Channels; lihat log pemulihan.' : `❌ Tidak dapat menampilkan onboarding: ${error.message}`);
   }
 }
 async function trackMemberMessage(guild, client, memberId, message) {
