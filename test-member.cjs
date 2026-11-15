@@ -1,9 +1,10 @@
 const assert=require('node:assert/strict');
 const {Collection,ChannelType,PermissionsBitField} = require('discord.js');
+const state=require('./state');let onboardingMode='individual';state.get=()=>({onboardingMode});state.setOnboardingMode=async(id,value)=>{onboardingMode=value};
 let manager=require('./member-management');let welcome=require('./welcome');const {handleCommunityInteraction,isOwner}=require('./community');
 const client={user:{id:'100000000000000004'}};const owner={id:'100000000000000002',name:'Owner'},status={id:'100000000000000003',name:'Pekerja'};
 const guild={id:'100000000000000001',name:'Komunitas',memberCount:6,iconURL:()=>null,roles:{cache:new Collection([[owner.id,owner],[status.id,status]])}};
-const channels=new Collection();guild.channels={cache:channels,fetch:async()=>channels};let seq=1000;
+guild.roles.fetch=async()=>guild.roles.cache;const channels=new Collection();guild.channels={cache:channels,fetch:async()=>channels};let seq=1000;
 function channel(id,name,type,parentId,privateChannel=false){
  const sent=[];const pc=new Collection();if(privateChannel)pc.set(guild.id,{id:guild.id,deny:new PermissionsBitField(PermissionsBitField.Flags.ViewChannel),allow:new PermissionsBitField()});
  const c={id,name,type,parentId,get parent(){return channels.get(parentId)},permissionOverwrites:{cache:pc},sent,messages:{async fetch(opts){if(opts.message)return sent.find(m=>m.id===opts.message)||null;let a=[...sent].reverse();if(opts.before){const n=a.findIndex(m=>m.id===opts.before);a=n<0?[]:a.slice(n+1)}return new Collection(a.slice(0,opts.limit).map(m=>[m.id,m]))}},
@@ -28,7 +29,12 @@ function cmd({invokerHasRole=true,ch=dc,targetId=target.id}={}) {return {guild,g
  let c=cmd({invokerHasRole:false});await manager.handleMemberCommand(c,client,guild.id,deps);assert.match(c.output.content,/pilih role/);
  c=cmd();await manager.handleMemberCommand(c,client,guild.id,deps);assert.equal(dc.sent.length,1);
  values.body='Profil diperbarui untuk {username}.';values.footer='YA\nFooter baru';i=save();await handleCommunityInteraction(i,client,guild.id);assert.match(i.output,/diperbarui/);assert.match(dc.sent[0].embeds[0].description,/Profil diperbarui untuk Rina/);assert.equal(dc.sent[0].embeds[0].footer.text,'Footer baru');assert(dc.sent[0].embeds[0].timestamp);
- delete require.cache[require.resolve('./member-management')];manager=require('./member-management');assert.equal(await manager.memberBody(guild,client,target.id),'Profil diperbarui untuk {username}.');assert.equal((await manager.memberProfile(guild,client,target.id)).parts.footer,'Footer baru');
+ const slash=channel('306','kelola-slash-command',ChannelType.GuildText,category.id,true);
+ i=interaction('community:slash-onboarding-common','button',{channel:slash});await handleCommunityInteraction(i,client,guild.id);assert.equal(i.modal.components.length,4);
+ const generalValues={header:'Author umum\nJudul {username}',body:'Umum untuk {username}',details:'-\n-\n-',footer:'TIDAK\nFooter umum'};
+ i=interaction('community:slash-onboarding-common-save','modal',{channel:slash,fields:{getTextInputValue:k=>generalValues[k]}});await handleCommunityInteraction(i,client,guild.id);assert.match(i.output,/semua onboarding/);assert.equal(onboardingMode,'common');payload=await welcome.buildMemberOnboarding(guild,client,target,'Pekerja');assert.match(payload.embeds[0].toJSON().description,/Umum untuk Rina/);
+ values.body='Khusus lagi untuk {username}';i=interaction(`community:member-save:${target.id}`,'modal',{channel:slash,fields:{getTextInputValue:k=>values[k]}});await handleCommunityInteraction(i,client,guild.id);assert.equal(onboardingMode,'individual');payload=await welcome.buildMemberOnboarding(guild,client,target,'Pekerja');assert.match(payload.embeds[0].toJSON().description,/Khusus lagi/);
+ delete require.cache[require.resolve('./member-management')];manager=require('./member-management');assert.equal(await manager.memberBody(guild,client,target.id),'Khusus lagi untuk {username}');assert.equal((await manager.memberProfile(guild,client,target.id)).parts.footer,'Footer baru');
  mc.permissionOverwrites.cache.set('bad',{id:'bad',deny:new PermissionsBitField(),allow:new PermissionsBitField(PermissionsBitField.Flags.ViewChannel)});i=save();await assert.rejects(handleCommunityInteraction(i,client,guild.id),/tidak aman/);
  console.log('LULUS: member, semua bagian, simpan, privasi, slash dan edit pesan terakhir.');
 })().catch(e=>{console.error(e);process.exitCode=1});

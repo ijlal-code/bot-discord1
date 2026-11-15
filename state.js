@@ -9,7 +9,7 @@ async function init() {
  collection = connection.db(process.env.MONGODB_DB || 'komunitas').collection('guilds');
  await collection.createIndex({ guildId: 1 }, { unique: true });
  if(await collection.countDocuments({enabled:true},{limit:1001})>1000)throw Error('Lebih dari 1000 server aktif; kurangi sebelum memulai.');
- const records = await collection.find({ enabled: true }, { projection: { guildId: 1, enabledMemberCommands: 1, discussionId: 1, disabledCommands: 1 } }).limit(1000).toArray();
+ const records = await collection.find({ enabled: true }, { projection: { guildId: 1, enabledMemberCommands: 1, discussionId: 1, disabledCommands: 1, layout: 1, appliedMode: 1, onboardingMode: 1 } }).limit(1000).toArray();
  for (const r of records) active.set(r.guildId, r);
 }
 function get(id) { return active.get(id); }
@@ -25,7 +25,7 @@ async function select(id, enabled, channel) {
  active.set(id,{...active.get(id),enabledMemberCommands:enabled?['onboarding-member']:[],discussionId:enabled?channel:null});
 }
 async function deactivate(id){active.delete(id);await collection.updateOne({guildId:id},{$set:{enabled:false,leftGuild:false,enabledMemberCommands:[],discussionId:null,updatedAt:new Date()}});}
-async function readConfig(id){return await collection.findOne({guildId:id},{projection:{disabledCommands:1,enabled:1,leftGuild:1,layout:1,customCategories:1}});}
+async function readConfig(id){return await collection.findOne({guildId:id},{projection:{disabledCommands:1,enabled:1,leftGuild:1,layout:1,customCategories:1,newCategories:1,newChannels:1,onboardingMode:1,appliedMode:1}});}
 async function setDisabled(id,disabled){
  const {validDisabled}=require('./features');if(!validDisabled(disabled))throw Error('Pilihan perintah tidak valid.');
  const r=await collection.updateOne({guildId:id},{$set:{disabledCommands:disabled,updatedAt:new Date()}});
@@ -35,7 +35,11 @@ async function setDisabled(id,disabled){
 async function markLeft(id){active.delete(id);await collection.updateOne({guildId:id},{$set:{enabled:false,leftGuild:true,updatedAt:new Date()}});}
 async function ensurePending(id){await collection.updateOne({guildId:id},{$setOnInsert:{enabled:false,leftGuild:false,enabledMemberCommands:[],discussionId:null,createdAt:new Date()}},{upsert:true});}
 async function markJoined(id){active.delete(id);await collection.updateOne({guildId:id},{$set:{enabled:false,leftGuild:false,updatedAt:new Date()},$setOnInsert:{enabledMemberCommands:[],discussionId:null}},{upsert:true});}
-async function setLayout(id,layout){const {validateLayout}=require('./custom-layout');const safe=validateLayout(layout);const r=await collection.updateOne({guildId:id},{$set:{layout:safe,updatedAt:new Date()}});if(!r.matchedCount)throw Error('Server belum terdaftar.');}
+async function setLayout(id,layout){const {validateLayout}=require('./custom-layout');const safe=validateLayout(layout);const r=await collection.updateOne({guildId:id},{$set:{layout:safe,updatedAt:new Date()}});if(!r.matchedCount)throw Error('Server belum terdaftar.');if(active.has(id))active.set(id,{...active.get(id),layout:safe});}
+async function recordNewChannel(id,record){await collection.updateOne({guildId:id},{$push:{newChannels:record}});}
+async function recordNewCategory(id,record){await collection.updateOne({guildId:id},{$push:{newCategories:record}});}
+async function setAppliedMode(id,mode){if(!['default','new'].includes(mode)||!active.has(id))throw Error('Server tidak aktif.');const result=await collection.updateOne({guildId:id,enabled:true},{$set:{appliedMode:mode}});if(!result.matchedCount)throw Error('Server tidak aktif.');if(active.has(id))active.set(id,{...active.get(id),appliedMode:mode});}
+async function setOnboardingMode(id,mode){if(!['common','individual'].includes(mode)||!active.has(id))throw Error('Mode tidak valid atau server tidak aktif.');const result=await collection.updateOne({guildId:id,enabled:true},{$set:{onboardingMode:mode}});if(!result.matchedCount)throw Error('Server tidak aktif.');if(active.has(id))active.set(id,{...active.get(id),onboardingMode:mode});}
 async function recordCustomCategory(id,record){await collection.updateOne({guildId:id},{$push:{customCategories:record}});}
 async function close(){await connection?.close();}
-module.exports={init,get,exists,activate,deactivate,select,readConfig,setDisabled,markLeft,ensurePending,markJoined,setLayout,recordCustomCategory,close,active};
+module.exports={init,get,exists,activate,deactivate,select,readConfig,setDisabled,markLeft,ensurePending,markJoined,setLayout,recordCustomCategory,recordNewCategory,recordNewChannel,setAppliedMode,setOnboardingMode,close,active};

@@ -31,7 +31,7 @@ client.once('clientReady',async()=>{
 client.on('guildCreate',async guild=>{if(!client.isReady())return;try{await state.markJoined(guild.id);console.log(`[GUILD ${guild.id}] Menunggu aktivasi dashboard.`);}catch(e){console.error(`[GUILD ${guild.id}] Gagal mencatat server: ${e.message}`);}});
 client.on('guildDelete',async guild=>{try{await state.markLeft(guild.id);console.log('[GUILD] Bot keluar; pengaturan server disimpan.');}catch(e){console.error('[GUILD] Gagal menyimpan status keluar; periksa MongoDB.');}});
 client.on('guildMemberAdd',async member=>{
- if(!state.get(member.guild.id)||member.user.bot)return;
+ if(!state.get(member.guild.id)||state.get(member.guild.id).appliedMode==='new'||member.user.bot)return;
  try{await announceJoin(member,client);}catch(e){console.error('[WELCOME]',e.message);}
 });
 client.on('interactionCreate',async i=>{
@@ -48,11 +48,12 @@ client.on('interactionCreate',async i=>{
   }
   if(i.customId?.startsWith('community:')){await handleCommunityInteraction(i,client,i.guildId);return;}
   if(i.isButton()){
-   if(i.customId.startsWith('select_role:'))await handleRoleButtonInteraction(i,async(member,role)=>{if(state.get(member.guild.id)&&!member.user.bot)await welcomeAfterRole(member,client,role);});
+   if(i.customId.startsWith('select_role:'))await handleRoleButtonInteraction(i,async(member,role)=>{if(state.get(member.guild.id)&&state.get(member.guild.id).appliedMode!=='new'&&!member.user.bot)await welcomeAfterRole(member,client,role);});
    return;
   }
   if(!i.isChatInputCommand())return;
   if(isDisabled(state.get(i.guildId),i.commandName)){await i.reply({content:'Perintah ini sedang dinonaktifkan oleh pengelola layanan bot.',flags:MessageFlags.Ephemeral});return;}
+  if(state.get(i.guildId).appliedMode==='new'&&['onboarding-member','setup-komunitas','kunci-chat','panel-role'].includes(i.commandName)){await i.reply({content:'Perintah ini memakai struktur bawaan dan tidak tersedia dalam mode Buat baru.',flags:MessageFlags.Ephemeral});return;}
   if(i.commandName==='onboarding-member'){
    const cfg=state.get(i.guildId);
    if(!isOwner(i)&&(!cfg.enabledMemberCommands?.includes('onboarding-member')||i.channelId!==cfg.discussionId)){await i.reply({content:'Perintah ini belum diaktifkan untuk member di channel ini.',flags:MessageFlags.Ephemeral});return;}

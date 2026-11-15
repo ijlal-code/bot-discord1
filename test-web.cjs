@@ -4,7 +4,7 @@ const {Collection}=require('discord.js'),state=require('./state'),auth=require('
 process.env.DISCORD_CLIENT_ID='100000000000000001';process.env.DISCORD_CLIENT_SECRET='test-secret';process.env.DASHBOARD_URL='https://dashboard.example';process.env.PORT='0';
 const appId=process.env.DISCORD_CLIENT_ID,owner='100000000000000004',buyer='100000000000000005',g1='100000000000000002',g2='100000000000000011';
 let remoteUser=owner,app={id:appId,owner:{id:owner},team:null},appFails=false,scope='identify';
-const client={user:{id:appId},rest:{get:async()=>{if(appFails)throw Error('API unavailable');return app;}},isReady:()=>true,guilds:{cache:new Collection([[g1,{id:g1,name:'Server satu'}],[g2,{id:g2,name:'Server lain'}]])}};
+const client={user:{id:appId},rest:{get:async()=>{if(appFails)throw Error('API unavailable');return app;}},isReady:()=>true,guilds:{cache:new Collection([[g1,{id:g1,name:'Server satu',roles:{fetch:async()=>new Collection([['a',{id:'a',name:'Member',managed:false}],['b',{id:'b',name:'Managed',managed:true}]])}}],[g2,{id:g2,name:'Server lain'}]])}};
 const db=new Map();state.get=id=>db.get(id)?.enabled?db.get(id):undefined;state.activate=async id=>db.set(id,{guildId:id,enabled:true});state.deactivate=async id=>db.delete(id);state.readConfig=async id=>db.get(id)||null;state.setDisabled=async(id,disabled)=>{db.get(id).disabledCommands=[...disabled]};state.ensurePending=async id=>{if(!db.has(id))db.set(id,{guildId:id,enabled:false})};state.setLayout=async(id,layout)=>{db.get(id).layout=layout};let registrations=[];
 const realFetch=global.fetch;global.fetch=async(url)=>{if(String(url).endsWith('/oauth2/token'))return {ok:true,json:async()=>({access_token:'TEST_BEARER',expires_in:3600,scope})};if(String(url).endsWith('/users/@me'))return {ok:true,json:async()=>({id:remoteUser,username:'Akun'})};throw Error('unexpected fetch');};
 function req(port,method,path,headers={},data){return new Promise((resolve,reject)=>{const x=http.request({port,host:'127.0.0.1',method,path,headers},r=>{let body='';r.on('data',c=>body+=c);r.on('end',()=>resolve({status:r.statusCode,headers:r.headers,body}));});x.on('error',reject);if(data)x.write(data);x.end();});}
@@ -24,11 +24,17 @@ try{
  r=await req(port,'GET','/api/features?guildId='+g2,{cookie:sid});assert.deepEqual(JSON.parse(r.body).disabledCommands,['hapus-pesan']);
  r=await req(port,'GET','/api/features?guildId=100000000000000099',{cookie:sid});assert.equal(r.status,404);
  r=await req(port,'POST','/api/activate',hdr,JSON.stringify({guildId:'100000000000000099'}));assert.equal(r.status,404);
+ assert.equal((await req(port,'GET','/api/roles?guildId='+g1)).status,401);
+ r=await req(port,'GET','/api/roles?guildId='+g1,{cookie:sid});assert.equal(r.status,200);assert.deepEqual(JSON.parse(r.body).roles,[{name:'Member'}]);
+ r=await req(port,'GET','/api/roles?guildId=100000000000000099',{cookie:sid});assert.equal(r.status,404);
  r=await req(port,'GET','/api/layout?guildId='+g1,{cookie:sid});assert.equal(r.status,200);assert.equal(JSON.parse(r.body).layout.mode,'default');assert.equal(state.get(g1),undefined);
  const layout={mode:'extra',categories:[{name:'Komunitas',visibility:'status',channels:[{name:'cerita',type:'text',visibility:'status'}]}]};
  r=await req(port,'POST','/api/layout',{...hdr,origin:'https://evil.example'},JSON.stringify({guildId:g1,layout}));assert.equal(r.status,403);
  r=await req(port,'POST','/api/layout',hdr,JSON.stringify({guildId:g1,layout}));assert.equal(r.status,200);assert.deepEqual(db.get(g1).layout,layout);assert(!db.get(g2).layout);
  r=await req(port,'POST','/api/layout',hdr,JSON.stringify({guildId:g1,layout:{mode:'extra',categories:[{name:'privat',visibility:'owner',channels:[{name:'umum',type:'text',visibility:'public'}]}]}}));assert.equal(r.status,400);
+ const newBuilder=require('./new-layout').emptyBuilder();newBuilder.templates.manage=true;const newLayout={mode:'new',builder:newBuilder};
+ r=await req(port,'POST','/api/layout',hdr,JSON.stringify({guildId:g1,layout:newLayout}));assert.equal(r.status,200);assert.deepEqual(db.get(g1).layout,newLayout);
+ const bad=structuredClone(newLayout);bad.builder.roles=[{name:'@everyone'}];r=await req(port,'POST','/api/layout',hdr,JSON.stringify({guildId:g1,layout:bad}));assert.equal(r.status,400);assert.deepEqual(db.get(g1).layout,newLayout);
  r=await req(port,'GET','/api/layout?guildId=100000000000000099',{cookie:sid});assert.equal(r.status,404);
  r=await req(port,'POST','/api/deactivate',hdr,JSON.stringify({guildId:g2}));assert.equal(r.status,200);assert(!db.has(g2));
  remoteUser=buyer;r=await login(port,'/auth/permissions');assert.equal(r.status,200);assert(!r.headers['set-cookie']);assert.equal(auth.tokenFor(buyer),'TEST_BEARER');assert.equal((await req(port,'GET','/api/me')).status,401);assert.equal(auth.tokenFor(owner),undefined);

@@ -216,6 +216,7 @@ async function handleCommunityInteraction(i, client, guildId) {
     return true;
   }
   if (!isOwner(i)) { await sendError(i, '⛔ Hanya anggota dengan role Owner yang dapat menggunakan fitur ini.'); return true; }
+  if (require('./state').get(i.guildId)?.appliedMode === 'new' && i.channel?.name === SLASH_CHANNEL && (id.startsWith('community:slash-') || id.startsWith('community:member-'))) { await sendError(i, 'Panel onboarding ini hanya tersedia pada mode bawaan.'); return true; }
   if (await selection.intercept(i, p => handleCommunityInteraction(p, client, guildId))) return true;
   if (i.isButton() && id === 'community:cancel-selection') { await i.deferUpdate(); await i.deleteReply(); return true; }
   if (id.startsWith('community:slash-')) {
@@ -228,7 +229,7 @@ async function handleCommunityInteraction(i, client, guildId) {
     await handleMessageEditor(i, client); return true;
   }
   if (id.startsWith('community:member-')) {
-    if (!i.channel || i.channel.name !== MEMBER_CHANNEL || i.channel.parent?.name !== CATEGORY) {
+    if (!i.channel || ![MEMBER_CHANNEL,SLASH_CHANNEL].includes(i.channel.name) || i.channel.parent?.name !== CATEGORY) {
       await sendError(i, '⛔ Gunakan panel di #kelola-member.'); return true;
     }
     await handleMemberInteraction(i, client, readConfig, updateLastMemberWelcome);
@@ -318,4 +319,4 @@ async function handleCommunityInteraction(i, client, guildId) {
   }
   return true;
 }
-module.exports = { setupCommunity, handleCommunityInteraction, isOwner, getOwnerRole, sendError };
+module.exports = { setupCommunity, managePanel, handleCommunityInteraction, isOwner, getOwnerRole, sendError };

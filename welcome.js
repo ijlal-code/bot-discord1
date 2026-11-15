@@ -3,6 +3,7 @@ const {
   MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, SystemChannelFlagsBitField,
 } = require('discord.js');
 const editor = require('./editor-template');
+const state=require('./state');
 const { memberProfile, recordJoined, pendingRecord, markDone, trackMemberMessage, lastMemberMessage } = require('./member-management');
 
 const SETTINGS_CHANNEL = 'kelola-embed-welcome-member';
@@ -116,6 +117,13 @@ async function saveConfig(guild, client, target, config, channel) {
   if (existing) await existing.edit(payload); else await channel.send(payload);
   configCache.set(`${guild.id}:${target}`, config);
 }
+async function saveCommonFromSlash(guild,client,config){
+ const channel=await settingsChannel(guild);if(!channel)throw Error('#kelola-embed-welcome-member belum tersedia. Jalankan /setup-komunitas.');
+ const roles=await guild.roles.fetch();const owners=roles.filter(r=>r.name==='Owner'&&r.id!==guild.id);if(owners.size!==1)throw Error('Role Owner tidak tersedia atau duplikat.');
+ const perms=channel.permissionOverwrites.cache, flags=require('discord.js').PermissionsBitField.Flags, allowed=[guild.id,owners.first().id,client.user.id];
+ if(!perms.get(guild.id)?.deny.has(flags.ViewChannel)||perms.some(p=>!allowed.includes(p.id)&&p.allow.has(flags.ViewChannel)))throw Error('Channel pengaturan welcome tidak aman. Periksa izin.');
+ await saveConfig(guild,client,'diskusi',config,channel);await state.setOnboardingMode(guild.id,'common');
+}
 async function handleWelcomeInteraction(i, client) {
   const [_, action, target] = i.customId.split(':');
   if (!['announcements', 'diskusi'].includes(target)) throw new Error('Pilihan welcome tidak valid.');
@@ -178,9 +186,10 @@ function renderOnboarding(config, member, role, customBody) {
   return embed;
 }
 async function buildMemberOnboarding(guild, client, member, role) {
-  const [general, profile] = await Promise.all([readConfig(guild, client, 'diskusi'), memberProfile(guild, client, member.id)]);
+  const common=state.get(guild.id)?.onboardingMode==='common';
+  const [general, profile] = await Promise.all([readConfig(guild, client, 'diskusi'), common?null:memberProfile(guild, client, member.id)]);
   const config = profile ? { body: profile.body, parts: { ...general.parts, ...(profile.parts || {}) } } : general;
-  const body = !profile && !role ? 'Halo {member}, member ini belum memilih role di {rules}.' : null;
+  const body = !common && !profile && !role ? 'Halo {member}, member ini belum memilih role di {rules}.' : null;
   return { embeds: [renderOnboarding(config, member, role, body)], allowedMentions: { parse: [] } };
 }
 async function updateLastMemberWelcome(guild, client, member) {
@@ -263,4 +272,4 @@ async function welcomeAfterRole(member, client, role) {
     }
   } finally { completing.delete(key); }
 }
-module.exports = { SETTINGS_CHANNEL, welcomePanel, handleWelcomeInteraction, announceJoin, welcomeAfterRole, suppressSystemWelcome, buildMemberOnboarding, readDiskusiBody, readConfig, updateLastMemberWelcome };
+module.exports = { SETTINGS_CHANNEL, welcomePanel, handleWelcomeInteraction, announceJoin, welcomeAfterRole, suppressSystemWelcome, buildMemberOnboarding, readDiskusiBody, readConfig, saveCommonFromSlash, updateLastMemberWelcome };

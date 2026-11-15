@@ -30,7 +30,7 @@ function json(res,code,obj){headers(res,code);res.end(JSON.stringify(obj));}
 function redirect(res,url,cookieValue){res.writeHead(302,{'Location':url,'Cache-Control':'no-store','Referrer-Policy':'no-referrer',...(cookieValue?{'Set-Cookie':cookieValue}:{})});res.end();}
 function sess(req){expire();return sessions.get(cookie(req,'sid'));}
 async function api(token,url){const r=await fetch('https://discord.com/api/v10'+url,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error('Discord gagal memverifikasi sesi. Silakan login ulang.');return r.json();}
-async function body(req){const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>16384)throw Error('Permintaan terlalu besar');chunks.push(c);}return JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
+async function body(req){const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>131072)throw Error('Permintaan terlalu besar');chunks.push(c);}return JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
 async function handler(req,res){
  try{
   const url=new URL(req.url,base);const p=url.pathname;
@@ -72,6 +72,13 @@ async function handler(req,res){
    if(!validDisabled(data.disabledCommands))return json(res,400,{error:'Pilihan perintah tidak valid.'});
    const now=Date.now();s.featureOps=(s.featureOps||[]).filter(t=>now-t<60000);if(s.featureOps.length>=10)return json(res,429,{error:'Terlalu banyak permintaan. Coba lagi nanti.'});s.featureOps.push(now);
    await state.setDisabled(data.guildId,data.disabledCommands);return json(res,200,{ok:true});
+  }
+  if(req.method==='GET'&&p==='/api/roles'){
+   const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});
+   if(s.kind!=='dashboard'||!await isPlatformAdmin(s.user.id))return json(res,403,{error:'Dashboard hanya untuk pemilik aplikasi bot.'});
+   const id=url.searchParams.get('guildId');if(!id||!/^\d{15,22}$/.test(id))return json(res,400,{error:'ID server tidak valid.'});
+   const g=client.guilds.cache.get(id);if(!g)return json(res,404,{error:'Bot tidak berada di server tersebut.'});
+   const roles=await g.roles.fetch();return json(res,200,{roles:[...roles.values()].filter(r=>r.id!==id&&!r.managed).map(r=>({name:r.name})).sort((a,b)=>a.name.localeCompare(b.name,'id')).slice(0,200)});
   }
   if((req.method==='GET'||req.method==='POST')&&p==='/api/layout'){
    const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});

@@ -4,9 +4,20 @@ const state = require('./state');
 const auth = require('./web-auth');
 const rows=(...x)=>new ActionRowBuilder().addComponents(...x);
 const pending=new Map(), applying=new Set();
-function panel(){return {embeds:[new EmbedBuilder().setColor(0x2873c9).setTitle('Akses slash command untuk member').setDescription('Pilih perintah yang aman untuk member di #diskusi. Perintah pengelola dan reset tetap khusus pengelola.\n\nSebelum menyimpan, otorisasi Discord melalui link yang diberikan bot agar bot mendapatkan izin perubahan command. Pengaturan akan **mengganti overwrite perintah tersebut** di Integrations.')],components:[rows(new ButtonBuilder().setCustomId('community:slash-open').setLabel('Pilih perintah').setStyle(ButtonStyle.Primary))],allowedMentions:{parse:[]}};}
+function panel(){return {embeds:[new EmbedBuilder().setColor(0x2873c9).setTitle('Akses slash command untuk member').setDescription('Pilih perintah yang aman untuk member di #diskusi. Perintah pengelola dan reset tetap khusus pengelola.\n\nSebelum menyimpan, otorisasi Discord melalui link yang diberikan bot agar bot mendapatkan izin perubahan command. Pengaturan akan **mengganti overwrite perintah tersebut** di Integrations.\n\n**Pesan umum** dipakai untuk semua member dan mengabaikan pesan khusus tanpa menghapusnya. **Pesan khusus member** mengedit satu member dan mengaktifkan kembali mode khusus; member lain memakai pesan umum bila belum punya pesan khusus.')],components:[rows(new ButtonBuilder().setCustomId('community:slash-open').setLabel('Pilih perintah').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('community:slash-onboarding-common').setLabel('Pesan umum').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('community:member-edit').setLabel('Pesan khusus member').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('community:slash-onboarding-individual').setLabel('Gunakan pesan khusus').setStyle(ButtonStyle.Secondary))],allowedMentions:{parse:[]}};}
 async function handle(i,client){
  const id=i.customId;
+ if(id==='community:slash-onboarding-common'&&i.isButton()){
+  const welcome=require('./welcome'),editor=require('./editor-template');const config=await welcome.readConfig(i.guild,client,'diskusi',true);
+  return i.showModal(editor.modal('community:slash-onboarding-common-save','Edit onboarding umum',config));
+ }
+ if(id==='community:slash-onboarding-common-save'&&i.isModalSubmit()){
+  await i.deferReply({flags:MessageFlags.Ephemeral});const editor=require('./editor-template'),welcome=require('./welcome');
+  try{const config=editor.read(i.fields);await welcome.saveCommonFromSlash(i.guild,client,config);return i.editReply('✅ Pesan umum disimpan dan digunakan untuk semua onboarding berikutnya. Pesan khusus tetap tersimpan.');}catch(e){return i.editReply(`❌ ${e.message}`);}
+ }
+ if(id==='community:slash-onboarding-individual'&&i.isButton()){
+  await state.setOnboardingMode(i.guildId,'individual');return i.reply({content:'✅ Mode khusus aktif. Profil yang tersedia dipakai; member lain menggunakan pesan umum.',flags:MessageFlags.Ephemeral});
+ }
  if(id==='community:slash-open'&&i.isButton()){
   const current=state.get(i.guildId)?.enabledMemberCommands?.includes('onboarding-member');
   return i.reply({content:'Pilih perintah untuk member; pilih **Tidak ada** untuk menyembunyikan semuanya. Perintah lain tetap khusus pengelola.',flags:MessageFlags.Ephemeral,components:[rows(new StringSelectMenuBuilder().setCustomId('community:slash-pick').setPlaceholder('Pilih akses member').addOptions([{label:'Tidak ada',value:'none',default:!current},{label:'/onboarding-member',value:'onboarding-member',default:!!current}])),rows(new ButtonBuilder().setCustomId('community:slash-cancel').setLabel('Batal').setStyle(ButtonStyle.Secondary))]});

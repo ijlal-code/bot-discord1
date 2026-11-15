@@ -5,6 +5,7 @@ const {
 
 const editor = require('./editor-template');
 const selection = require('./selection-continue');
+const state = require('./state');
 const MEMBER_CHANNEL = 'kelola-member';
 const CATEGORY = '🔐 KELOLA KOMUNITAS';
 const PROFILE_MARKER = 'member-onboarding:v1:';
@@ -92,7 +93,7 @@ async function handleMemberInteraction(i, client, readGeneralConfig, updateLastM
       let profile;
       try { profile = editor.read(i.fields); } catch (e) { await i.editReply(`❌ ${e.message}`); return; }
       const privateChannel = await memberChannel(i.guild, client);
-      if (!privateChannel || privateChannel.id !== i.channel.id) throw new Error('Channel #kelola-member tidak aman.');
+      if (!privateChannel || (i.channel.name!==MEMBER_CHANNEL && i.channel.name!=='kelola-slash-command')) throw new Error('Channel pengaturan tidak aman.');
       const existing = await findMessage(privateChannel, client, PROFILE_MARKER + memberId);
       const embed = new EmbedBuilder().setColor(0x334155).setTitle(`Onboarding member ${memberId}`)
         .setDescription(profile.body).addFields(Object.entries(profile.parts).map(([name,value])=>({name:`setting:${name}`,value:value || '\u200b'})))
@@ -100,6 +101,7 @@ async function handleMemberInteraction(i, client, readGeneralConfig, updateLastM
       const payload = { embeds: [embed], allowedMentions: { parse: [] } };
       if (existing) await existing.edit(payload); else await privateChannel.send(payload);
       cache.set(key, profile);
+      if(i.channel.name==='kelola-slash-command')await state.setOnboardingMode(i.guildId,'individual');
       let result;
       try { result = await updateLastMessage(i.guild, client, member); }
       catch (error) { result = false; console.error('[ONBOARDING EDIT]', error); }

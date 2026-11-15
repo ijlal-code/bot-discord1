@@ -6,6 +6,7 @@ const F=PermissionsBitField.Flags;
 const emptyLayout=()=>({mode:'default',categories:[]});
 const ranks={public:0,status:1,owner:2};
 function validateLayout(input){
+ if(input?.mode==='new')return require('./new-layout').validateNew(input);
  if(!input||typeof input!=='object'||!['default','extra'].includes(input.mode)||!Array.isArray(input.categories)||input.categories.length>5)throw Error('Konfigurasi tidak valid (maksimal 5 kategori).');
  const reservedCategories=new Set([...serverStructure.map(x=>x.category),'🔐 KELOLA KOMUNITAS','🗄️ BACKUP'].map(x=>x.toLowerCase()));
  const reservedChannels=new Set([...serverStructure.flatMap(x=>x.channels.map(c=>c.name)),'kelola-kategori','kelola-channel','terima-form','kelola-embed-welcome-member','kelola-member','edit-pesan-channel-awal','kelola-slash-command','pesan-dihapus','riwayat-chat']);
