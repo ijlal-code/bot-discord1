@@ -3,6 +3,7 @@ const {Client,GatewayIntentBits,ActivityType,PermissionsBitField,MessageFlags,RE
 const {STATUS_ROLES,buildRulesAndRolePanel,handleRoleButtonInteraction}=require('./role');
 const {setup:setupServer}=require('./safe-setup');
 const {activateGuild}=require('./auto-activate');
+const {reconcileAtStartup}=require('./startup-reconcile');
 const {restoreAccess}=require('./restore-access');
 const {isDisabled}=require('./features');
 const {handleSetup}=require('./setup-command');
@@ -24,16 +25,9 @@ client.once('clientReady',async()=>{
  client.user.setActivity('komunitas', {type:ActivityType.Watching});
  try{const globalResult=await registerGlobal(rest,client.user.id);if(globalResult.errors.length)console.error('[SLASH GLOBAL] Sebagian registrasi gagal:',globalResult.errors.join('; '));}catch(e){console.error('[SLASH GLOBAL] Registrasi gagal:',e.message);}
  try{web.start(client,register);}catch(e){console.error('[CONFIG]',e.message);process.exit(1);}
- // Pemulihan terbatas hanya pada overwrite bot di channel setup yang dikenali.
+ // Startup reconciles newly invited/left guilds, without scanning permissions.
  console.log(`[INIT] ${state.active.size} server aktif dimuat.`);
- // One guild at a time; only known bot setup channels are considered.
- for(const guild of client.guilds.cache.values()){
-  try{
-   const record=await state.readConfig(guild.id);
-   if(!record || record.leftGuild) await activateGuild(guild,register,{onlyNew:!record});
-   if(state.get(guild.id)) {const result=await restoreAccess(guild,client);console.log(`[PEMULIHAN ${guild.id}] ${result.updated} diubah; ${result.verified}/${result.checked} akses terverifikasi; dilewati: ${result.skipped.join(' | ')||'-'}; gagal: ${result.errors.join(' | ')||'-'}`);}
-  }catch(e){console.warn(`[AKTIVASI ${guild.id}] ${e.message}`);}
- }
+ await reconcileAtStartup(client.guilds.cache.values(),{state,activateGuild,register});
 });
 client.on('guildCreate',async guild=>{if(!client.isReady())return;try{await activateGuild(guild,register);const result=await restoreAccess(guild,client);console.log(`[GUILD ${guild.id}] Terdaftar; diubah: ${result.updated}; terverifikasi: ${result.verified}/${result.checked}; dilewati: ${result.skipped.join(', ')||'-'}; gagal: ${result.errors.join(', ')||'-'}`);}catch(e){console.error(`[GUILD ${guild.id}] Aktivasi atau pemulihan gagal: ${e.message}`);}});
 client.on('guildDelete',async guild=>{if(state.get(guild.id))try{await state.markLeft(guild.id);console.log('[GUILD] Bot keluar; pengaturan server disimpan untuk undangan ulang.');}catch(e){console.error('[GUILD] Gagal menyimpan status keluar; periksa MongoDB.');}});
