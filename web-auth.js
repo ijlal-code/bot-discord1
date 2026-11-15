@@ -6,6 +6,7 @@ const path=require('node:path');
 const {PermissionsBitField,Routes}=require('discord.js');
 const state=require('./state');
 const {COMMANDS,validDisabled}=require('./features');
+const {emptyLayout,validateLayout}=require('./custom-layout');
 const sessions=new Map(), oauthStates=new Map(), activating=new Set();
 const rand=()=>crypto.randomBytes(32).toString('base64url');
 let base, client, register;
@@ -29,7 +30,7 @@ function json(res,code,obj){headers(res,code);res.end(JSON.stringify(obj));}
 function redirect(res,url,cookieValue){res.writeHead(302,{'Location':url,'Cache-Control':'no-store','Referrer-Policy':'no-referrer',...(cookieValue?{'Set-Cookie':cookieValue}:{})});res.end();}
 function sess(req){expire();return sessions.get(cookie(req,'sid'));}
 async function api(token,url){const r=await fetch('https://discord.com/api/v10'+url,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error('Discord gagal memverifikasi sesi. Silakan login ulang.');return r.json();}
-async function body(req){let b='';for await(const c of req){b+=c;if(b.length>4096)throw Error('Permintaan terlalu besar');}return JSON.parse(b||'{}');}
+async function body(req){const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>16384)throw Error('Permintaan terlalu besar');chunks.push(c);}return JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
 async function handler(req,res){
  try{
   const url=new URL(req.url,base);const p=url.pathname;
@@ -55,10 +56,9 @@ async function handler(req,res){
   if(req.method==='GET'&&p==='/api/me'){
    const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});
    if(s.kind!=='dashboard'||!await isPlatformAdmin(s.user.id))return json(res,403,{error:'Dashboard hanya untuk pemilik aplikasi bot.'});
-   if(s.guildCache && s.guildCache.expires>Date.now())return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds:s.guildCache.guilds,platformAdmin:true,inviteUrl:inviteUrl()});
    const guilds=Array.from(client.guilds.cache.values()).map(g=>({id:g.id,name:g.name,active:!!state.get(g.id)}));
    guilds.sort((a,b)=>a.name.localeCompare(b.name,'id')||a.id.localeCompare(b.id));
-   s.guildCache={guilds,expires:Date.now()+30000};return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds,platformAdmin:true,inviteUrl:inviteUrl()});
+   return json(res,200,{user:{name:s.user.global_name||s.user.username},csrf:s.csrf,guilds,platformAdmin:true,inviteUrl:inviteUrl()});
   }
   if((req.method==='GET'||req.method==='POST')&&p==='/api/features'){
    const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});
@@ -67,11 +67,24 @@ async function handler(req,res){
    const data=req.method==='POST'?await body(req):{guildId:url.searchParams.get('guildId')};
    if(typeof data.guildId!=='string'||!/^\d{15,22}$/.test(data.guildId))return json(res,400,{error:'ID server tidak valid.'});
    if(!client.guilds.cache.has(data.guildId))return json(res,404,{error:'Bot tidak berada di server tersebut.'});
-   const config=await state.readConfig(data.guildId);if(!config)return json(res,409,{error:'Server belum terdaftar. Aktifkan server terlebih dahulu.'});
+   await state.ensurePending(data.guildId);const config=await state.readConfig(data.guildId);if(!config)return json(res,409,{error:'Server belum terdaftar.'});
    if(req.method==='GET')return json(res,200,{commands:COMMANDS,disabledCommands:config.disabledCommands||[]});
    if(!validDisabled(data.disabledCommands))return json(res,400,{error:'Pilihan perintah tidak valid.'});
    const now=Date.now();s.featureOps=(s.featureOps||[]).filter(t=>now-t<60000);if(s.featureOps.length>=10)return json(res,429,{error:'Terlalu banyak permintaan. Coba lagi nanti.'});s.featureOps.push(now);
    await state.setDisabled(data.guildId,data.disabledCommands);return json(res,200,{ok:true});
+  }
+  if((req.method==='GET'||req.method==='POST')&&p==='/api/layout'){
+   const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});
+   if(s.kind!=='dashboard'||!await isPlatformAdmin(s.user.id))return json(res,403,{error:'Dashboard hanya untuk pemilik aplikasi bot.'});
+   if(req.method==='POST'&&(req.headers.origin!==base||req.headers['x-csrf-token']!==s.csrf))return json(res,403,{error:'Permintaan ditolak.'});
+   const data=req.method==='POST'?await body(req):{guildId:url.searchParams.get('guildId')};
+   if(typeof data.guildId!=='string'||!/^\d{15,22}$/.test(data.guildId))return json(res,400,{error:'ID server tidak valid.'});
+   if(!client.guilds.cache.has(data.guildId))return json(res,404,{error:'Bot tidak berada di server tersebut.'});
+   await state.ensurePending(data.guildId);
+   if(req.method==='GET'){const config=await state.readConfig(data.guildId);return json(res,200,{layout:config?.layout||emptyLayout()});}
+   const now=Date.now();s.layoutOps=(s.layoutOps||[]).filter(t=>now-t<60000);if(s.layoutOps.length>=10)return json(res,429,{error:'Terlalu banyak permintaan. Coba lagi nanti.'});s.layoutOps.push(now);
+   let layout;try{layout=validateLayout(data.layout);}catch(e){return json(res,400,{error:e.message});}
+   await state.setLayout(data.guildId,layout);return json(res,200,{ok:true});
   }
   if(req.method==='POST'&&(p==='/api/activate'||p==='/api/deactivate')){
    const s=sess(req);if(!s)return json(res,401,{error:'Login diperlukan.'});

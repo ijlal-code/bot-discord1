@@ -25,7 +25,7 @@ async function select(id, enabled, channel) {
  active.set(id,{...active.get(id),enabledMemberCommands:enabled?['onboarding-member']:[],discussionId:enabled?channel:null});
 }
 async function deactivate(id){active.delete(id);await collection.updateOne({guildId:id},{$set:{enabled:false,leftGuild:false,enabledMemberCommands:[],discussionId:null,updatedAt:new Date()}});}
-async function readConfig(id){return await collection.findOne({guildId:id},{projection:{disabledCommands:1,enabled:1,leftGuild:1}});}
+async function readConfig(id){return await collection.findOne({guildId:id},{projection:{disabledCommands:1,enabled:1,leftGuild:1,layout:1,customCategories:1}});}
 async function setDisabled(id,disabled){
  const {validDisabled}=require('./features');if(!validDisabled(disabled))throw Error('Pilihan perintah tidak valid.');
  const r=await collection.updateOne({guildId:id},{$set:{disabledCommands:disabled,updatedAt:new Date()}});
@@ -33,5 +33,9 @@ async function setDisabled(id,disabled){
  if(active.has(id))active.set(id,{...active.get(id),disabledCommands:[...disabled]});
 }
 async function markLeft(id){active.delete(id);await collection.updateOne({guildId:id},{$set:{enabled:false,leftGuild:true,updatedAt:new Date()}});}
+async function ensurePending(id){await collection.updateOne({guildId:id},{$setOnInsert:{enabled:false,leftGuild:false,enabledMemberCommands:[],discussionId:null,createdAt:new Date()}},{upsert:true});}
+async function markJoined(id){active.delete(id);await collection.updateOne({guildId:id},{$set:{enabled:false,leftGuild:false,updatedAt:new Date()},$setOnInsert:{enabledMemberCommands:[],discussionId:null}},{upsert:true});}
+async function setLayout(id,layout){const {validateLayout}=require('./custom-layout');const safe=validateLayout(layout);const r=await collection.updateOne({guildId:id},{$set:{layout:safe,updatedAt:new Date()}});if(!r.matchedCount)throw Error('Server belum terdaftar.');}
+async function recordCustomCategory(id,record){await collection.updateOne({guildId:id},{$push:{customCategories:record}});}
 async function close(){await connection?.close();}
-module.exports={init,get,exists,activate,deactivate,select,readConfig,setDisabled,markLeft,close,active};
+module.exports={init,get,exists,activate,deactivate,select,readConfig,setDisabled,markLeft,ensurePending,markJoined,setLayout,recordCustomCategory,close,active};

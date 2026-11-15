@@ -10,15 +10,12 @@ function make({uid=ownerId,choice='recover-safe-setup',active=false,disabled=fal
  return {i,deps,get:()=>({enabled,activationCount,setupCount,repairCount}),setDisabled:()=>{cfg={disabledCommands:['setup-server']}}};
 }
 (async()=>{
- let t=make();await handleSetup(t.i,t.deps);assert(t.i.deferred);assert.equal(t.get().enabled,true);assert.equal(t.get().activationCount,1);assert.equal(t.get().repairCount,1);assert.equal(t.get().setupCount,0);assert(t.i.follow.content.includes('Server aktif'));
- t=make({uid:other});await handleSetup(t.i,t.deps);assert.equal(t.get().activationCount,0);assert(t.i.edited.content.includes('pemilik server'));
- t=make({disabled:true});await handleSetup(t.i,t.deps);assert.equal(t.get().activationCount,0);assert(t.i.edited.content.includes('dinonaktifkan'));
- t=make({choice:'cancel-safe-setup'});await handleSetup(t.i,t.deps);assert.equal(t.get().activationCount,0);
- t=make({active:true,uid:other});await handleSetup(t.i,t.deps);assert.equal(t.get().activationCount,0);assert.equal(t.get().repairCount,1);
- t=make({regFail:true});await handleSetup(t.i,t.deps);assert.equal(t.get().enabled,false);assert(t.i.follow.content.includes('registrasi gagal'));
+ let t=make();await handleSetup(t.i,t.deps);assert.equal(t.get().enabled,false);assert.equal(t.get().activationCount,0);assert(t.i.edited.content.includes('dashboard'));
+ t=make({active:true,disabled:true});await handleSetup(t.i,t.deps);assert(t.i.edited.content.includes('dinonaktifkan'));
+ t=make({active:true,choice:'cancel-safe-setup'});await handleSetup(t.i,t.deps);assert.equal(t.get().repairCount,0);
+ t=make({active:true,uid:other});await handleSetup(t.i,t.deps);assert.equal(t.get().repairCount,1);
  t=make({choice:'confirm-safe-setup',active:true,recognized:false,ownerRole:true});await handleSetup(t.i,t.deps);assert.equal(t.get().setupCount,0);assert(t.i.follow.content.includes('mencegah duplikat'));
  t=make({choice:'confirm-safe-setup',active:true,recognized:true});await handleSetup(t.i,t.deps);assert.equal(t.get().setupCount,1);assert.equal(t.get().repairCount,2);
- t=make();t.i.fetchReply=async()=>({awaitMessageComponent:async()=>{t.setDisabled();return {customId:'recover-safe-setup',user:t.i.user,guild:t.i.guild,memberPermissions:admin,update:async()=>{}}}});await handleSetup(t.i,t.deps);assert.equal(t.get().activationCount,0);assert(t.i.follow.content.includes('akses')||t.i.follow.content.includes('Akses'));
- const source=require('node:fs').readFileSync('index.js','utf8');assert(source.indexOf("['recover-safe-setup','confirm-safe-setup','cancel-safe-setup']")<source.indexOf('if(!i.guild || !state.get(i.guildId))'));
- console.log('LULUS: setup server nonaktif hanya owner, revalidasi fitur, batal, pulih, hindari duplikat dan gagal aman.');
+ t=make({active:true});t.i.fetchReply=async()=>({awaitMessageComponent:async()=>{t.setDisabled();return {customId:'recover-safe-setup',user:t.i.user,guild:t.i.guild,memberPermissions:admin,update:async()=>{}}}});await handleSetup(t.i,t.deps);assert(t.i.follow.content.includes('Akses'));
+ console.log('LULUS: setup tidak mengaktifkan server; pemeriksaan izin, batal dan pemulihan.');
 })().catch(e=>{console.error(e);process.exitCode=1});

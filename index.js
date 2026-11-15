@@ -2,7 +2,6 @@
 const {Client,GatewayIntentBits,ActivityType,PermissionsBitField,MessageFlags,REST,ActionRowBuilder,ButtonBuilder,ButtonStyle,ComponentType}=require('discord.js');
 const {STATUS_ROLES,buildRulesAndRolePanel,handleRoleButtonInteraction}=require('./role');
 const {setup:setupServer}=require('./safe-setup');
-const {activateGuild}=require('./auto-activate');
 const {reconcileAtStartup}=require('./startup-reconcile');
 const {restoreAccess}=require('./restore-access');
 const {isDisabled}=require('./features');
@@ -27,10 +26,10 @@ client.once('clientReady',async()=>{
  try{web.start(client,register);}catch(e){console.error('[CONFIG]',e.message);process.exit(1);}
  // Startup reconciles newly invited/left guilds, without scanning permissions.
  console.log(`[INIT] ${state.active.size} server aktif dimuat.`);
- await reconcileAtStartup(client.guilds.cache.values(),{state,activateGuild,register});
+ await reconcileAtStartup(client.guilds.cache.values(),{state});
 });
-client.on('guildCreate',async guild=>{if(!client.isReady())return;try{await activateGuild(guild,register);const result=await restoreAccess(guild,client);console.log(`[GUILD ${guild.id}] Terdaftar; diubah: ${result.updated}; terverifikasi: ${result.verified}/${result.checked}; dilewati: ${result.skipped.join(', ')||'-'}; gagal: ${result.errors.join(', ')||'-'}`);}catch(e){console.error(`[GUILD ${guild.id}] Aktivasi atau pemulihan gagal: ${e.message}`);}});
-client.on('guildDelete',async guild=>{if(state.get(guild.id))try{await state.markLeft(guild.id);console.log('[GUILD] Bot keluar; pengaturan server disimpan untuk undangan ulang.');}catch(e){console.error('[GUILD] Gagal menyimpan status keluar; periksa MongoDB.');}});
+client.on('guildCreate',async guild=>{if(!client.isReady())return;try{await state.markJoined(guild.id);console.log(`[GUILD ${guild.id}] Menunggu aktivasi dashboard.`);}catch(e){console.error(`[GUILD ${guild.id}] Gagal mencatat server: ${e.message}`);}});
+client.on('guildDelete',async guild=>{try{await state.markLeft(guild.id);console.log('[GUILD] Bot keluar; pengaturan server disimpan.');}catch(e){console.error('[GUILD] Gagal menyimpan status keluar; periksa MongoDB.');}});
 client.on('guildMemberAdd',async member=>{
  if(!state.get(member.guild.id)||member.user.bot)return;
  try{await announceJoin(member,client);}catch(e){console.error('[WELCOME]',e.message);}
@@ -39,12 +38,12 @@ client.on('interactionCreate',async i=>{
  try{
   // The setup component collector owns these replies, even while the guild is inactive.
   if(i.isButton() && ['recover-safe-setup','confirm-safe-setup','cancel-safe-setup'].includes(i.customId))return;
-  // The real guild owner can use setup to recover an inactive guild; feature switches still apply.
+  // Setup cannot activate an inactive server; the dashboard controls activation.
   if(i.guild && i.isChatInputCommand() && i.commandName==='setup-server'){
-   await handleSetup(i,{client,state,register,activateGuild,restoreAccess,setupServer,setupCommunity,isOwner,running:setupRunning});return;
+   await handleSetup(i,{client,state,restoreAccess,setupServer,setupCommunity,isOwner,running:setupRunning});return;
   }
   if(!i.guild || !state.get(i.guildId)){
-   if(i.isChatInputCommand()||i.isMessageComponent()||i.isModalSubmit())await i.reply({content:'Server belum aktif. Pemilik server dapat menjalankan /setup-server lalu memilih Pulihkan akses, atau pengelola layanan dapat mengaktifkannya di dashboard.',flags:MessageFlags.Ephemeral}).catch(()=>{});
+   if(i.isChatInputCommand()||i.isMessageComponent()||i.isModalSubmit())await i.reply({content:'Server belum aktif. Pengelola layanan harus mengaktifkannya melalui dashboard terlebih dahulu.',flags:MessageFlags.Ephemeral}).catch(()=>{});
    return;
   }
   if(i.customId?.startsWith('community:')){await handleCommunityInteraction(i,client,i.guildId);return;}

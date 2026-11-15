@@ -1,11 +1,6 @@
 'use strict';
-// Startup reconciles registrations only. It must never scan or alter channel permissions.
-async function reconcileAtStartup(guilds,{state,activateGuild,register,log=console}){
- for(const guild of guilds){
-  try{
-   const record=await state.readConfig(guild.id);
-   if(!record||record.leftGuild)await activateGuild(guild,register,{onlyNew:!record});
-  }catch(e){log.warn(`[AKTIVASI ${guild.id}] ${e.message}`);}
- }
+// A restart only registers missing records as inactive. No activation or permission recovery.
+async function reconcileAtStartup(guilds,{state,log=console}){
+ for(const guild of guilds){try{await state.ensurePending(guild.id);}catch(e){log.warn(`[SERVER ${guild.id}] Gagal mencatat server: ${e.message}`);}}
 }
 module.exports={reconcileAtStartup};
